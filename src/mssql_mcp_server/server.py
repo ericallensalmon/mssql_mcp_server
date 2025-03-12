@@ -27,7 +27,30 @@ def get_db_config():
         logger.error("MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE are required")
         raise ValueError("Missing required database configuration")
     
-    connection_string = f"Driver={config['driver']};Server={config['server']};UID={config['user']};PWD={config['password']};Database={config['database']};"
+    
+    # Detect if server is Azure SQL based on domain name
+    is_azure = ".database.windows.net" in config["server"].lower()
+    
+    # Build connection string based on server type
+    if is_azure:
+       # Note: Azure SQL Database manages its own SSL certificates, no need to specify a certificate
+        connection_string = (
+            f"Driver={config['driver']};"
+            f"Server=tcp:{config['server']},1433;"  # Explicit TCP protocol and port
+            f"Database={config['database']};"
+            f"UID={config['user']};"
+            f"PWD={config['password']};"
+            "Encrypt=yes;"  # Always encrypt for Azure SQL
+            "TrustServerCertificate=no;"  # Validate Azure's SSL certificate
+            "Connection Timeout=30;"  # Reasonable timeout
+            "ApplicationIntent=ReadWrite;"  # Explicit application intent
+            "MultiSubnetFailover=yes;"  # Support for Azure high availability
+            "Column Encryption Setting=Enabled;"  # Enable Always Encrypted if configured
+        )
+    else:
+        # Standard SQL Server connection string
+        connection_string = f"Driver={config['driver']};Server={config['server']};UID={config['user']};PWD={config['password']};Database={config['database']};"
+
 
     return config, connection_string
 
