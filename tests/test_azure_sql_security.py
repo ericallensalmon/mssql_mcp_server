@@ -1,12 +1,34 @@
 import pytest
 import pyodbc
 import ssl
-from mssql_mcp_server import get_connection  # Assuming this is your connection function
+import os
+from mssql_mcp_server.server import get_db_config
 
-def test_connection_encryption():
+# Skip all tests in this file if not running against Azure SQL
+pytestmark = pytest.mark.skipif(
+    not any([
+        ".database.windows.net" in os.getenv("MSSQL_HOST", "").lower(),
+        os.getenv("FORCE_AZURE_TESTS", "").lower() == "true"
+    ]),
+    reason="These tests are specific to Azure SQL Database"
+)
+
+@pytest.fixture
+def db_connection():
+    """Fixture to provide database connection."""
+    try:
+        _, connection_string = get_db_config()
+        conn = pyodbc.connect(connection_string)
+        yield conn
+        conn.close()
+    except ValueError as e:
+        pytest.skip(f"Database configuration error: {str(e)}")
+    except pyodbc.Error as e:
+        pytest.skip(f"Database connection error: {str(e)}")
+
+def test_connection_encryption(db_connection):
     """Test that the connection to Azure SQL is encrypted."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    cursor = db_connection.cursor()
     
     # Check if connection is encrypted
     encryption_result = cursor.execute("""
@@ -19,12 +41,10 @@ def test_connection_encryption():
     assert encryption_result.PROTOCOL_TYPE == 'TCPIP', "Unexpected protocol type"
     
     cursor.close()
-    conn.close()
 
-def test_tls_version():
+def test_tls_version(db_connection):
     """Test that the connection uses TLS 1.2 or higher."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    cursor = db_connection.cursor()
     
     # Check TLS version
     tls_result = cursor.execute("""
@@ -40,31 +60,26 @@ def test_tls_version():
     assert tls_result.protocol_version >= 0x0303, "TLS version is lower than 1.2"
     
     cursor.close()
-    conn.close()
 
 def test_connection_properties():
     """Test that required secure connection properties are set."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    config, connection_string = get_db_config()
     
-    # Check connection properties
-    props = {prop.lower(): value for prop, value in conn.getinfo(pyodbc.SQL_SERVER_STATISTICS)}
+    # Parse connection string to check security properties
+    conn_props = dict(prop.split('=', 1) for prop in connection_string.split(';') if '=' in prop)
     
-    assert props.get('encrypt') == 'yes', "Connection encryption is not enabled"
-    assert props.get('trustservercertificate') in ['yes', 'true'], "Server certificate validation is not properly configured"
-    
-    cursor.close()
-    conn.close()
+    # Azure SQL specific checks
+    assert conn_props.get('Encrypt', '').lower() == 'yes', "Connection encryption is not enabled"
+    assert conn_props.get('TrustServerCertificate', '').lower() == 'no', "Server certificate validation is not properly configured"
+    assert conn_props.get('Connection Timeout', '30') == '30', "Connection timeout is not set to 30 seconds"
+    assert 'MultiSubnetFailover=yes' in connection_string, "MultiSubnetFailover is not enabled"
 
-def test_connection_timeout():
-    """Test that connection timeout is properly set."""
-    conn = get_connection()
-    cursor = conn.cursor()
+def test_azure_specific_settings(db_connection):
+    """Test Azure SQL specific security settings."""
+    _, connection_string = get_db_config()
     
-    # Get connection timeout setting
-    timeout = cursor.execute("SELECT @@OPTIONS & 4").fetchval()
+    # Test Column Encryption setting
+    assert 'Column Encryption Setting=Enabled' in connection_string, "Column Encryption Setting is not enabled"
     
-    assert timeout == 4, "Remote connection timeout is not properly configured"
-    
-    cursor.close()
-    conn.close() 
+    # Test Application Intent
+    assert 'ApplicationIntent=ReadWrite' in connection_string, "ApplicationIntent is not set to ReadWrite" 
