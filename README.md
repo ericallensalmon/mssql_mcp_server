@@ -1,6 +1,6 @@
-Forked from [MSSQL MCP Server](https://github.com/JexinSam/mssql_mcp_server)
-
 # MSSQL MCP Server
+
+> This is a fork of [mssql_mcp_server](https://github.com/JexinSam/mssql_mcp_server) by [JexinSam](https://github.com/JexinSam). The original project provides a Model Context Protocol server for MSSQL databases.
 
 MSSQL MCP Server is a **Model Context Protocol (MCP) server** that enables secure and structured interaction with **Microsoft SQL Server (MSSQL)** databases. It allows AI assistants to:
 - List available tables
@@ -119,11 +119,22 @@ This project is licensed under the **MIT License**. See the `LICENSE` file for d
 
 ## Contributing
 
-We welcome contributions! To contribute:
+For improvements that could benefit the original project, please consider contributing to the [original repository](https://github.com/JexinSam/mssql_mcp_server) first.
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a **Pull Request**.
+For fork-specific features or changes:
+
+1. Create a feature branch: `git checkout -b feature/amazing-feature`
+2. Commit your changes: `git commit -m 'Add amazing feature'`
+3. Push to the branch: `git push origin feature/amazing-feature`
+4. Open a **Pull Request**
+
+### Maintainer
+
+This fork is maintained by [Eric Salmon](https://github.com/ericallensalmon).
+
+---
+
+### Need Help?
+
+For any questions or issues specific to this fork, feel free to open a GitHub **Issue** in this repository. For general questions about the project, consider posting in the original repository's issue tracker.
 
