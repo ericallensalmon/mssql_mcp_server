@@ -8,7 +8,8 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test-mssql:
+    name: Test with MSSQL
     runs-on: ubuntu-latest
     
     services:
@@ -59,3 +60,61 @@ jobs:
         MSSQL_DATABASE: master
       run: |
         python -m pytest -v
+
+  test-azure-sql:
+    name: Test with Azure SQL
+    runs-on: ubuntu-latest
+    
+    services:
+      azuresql:
+        image: mcr.microsoft.com/azure-sql-edge:latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: testpassword
+        ports:
+          - 1433:1433
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install -e .
+
+    - name: Wait for Azure SQL Edge to be ready
+      run: |
+        for i in {1..60}; do
+          if /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testpassword -Q "SELECT 1" &> /dev/null; then
+            echo "Azure SQL Edge is ready"
+            break
+          fi
+          echo "Waiting for Azure SQL Edge to be ready..."
+          sleep 1
+        done
+    
+    - name: Run tests
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: testpassword
+        MSSQL_DATABASE: master
+        AZURE_SQL_ENCRYPT: yes
+        AZURE_SQL_TRUST_SERVER_CERTIFICATE: yes
+        AZURE_SQL_CONNECTION_TIMEOUT: 30
+      run: |
+        # Run general tests
+        python -m pytest -v tests --ignore=tests/test_azure_sql_security.py
+        # Run Azure SQL specific security tests
+        python -m pytest -v tests/test_azure_sql_security.py -v
