@@ -20,8 +20,29 @@ This ensures safer database exploration, strict permission enforcement, and logg
 
 ## Installation
 
+If you would like to install a package, please see if the [original](https://github.com/JexinSam/mssql_mcp_server) will work for you first.
 ```bash
 pip install mssql-mcp-server
+```
+
+To install this fork instead, you have two options:
+
+1. Install directly from GitHub:
+```shell
+pip install git+https://github.com/ericallensalmon/mssql_mcp_server.git
+```
+
+2. Clone and install locally:
+```shell
+# Clone the repository
+git clone https://github.com/ericallensalmon/mssql_mcp_server.git
+cd mssql_mcp_server
+
+# Install the package in editable mode
+pip install -e .
+
+# Optional: Install development dependencies if needed (pytest, black, etc.)
+pip install -r requirements-dev.txt
 ```
 
 ## Configuration
@@ -64,6 +85,104 @@ To integrate with **Claude Desktop**, add this configuration to `claude_desktop_
   }
 }
 ```
+
+### Using with Cursor AI (requires Agent model with MCP support)
+
+To integrate with **Cursor**, you'll need to set up a virtual environment and install the MCP server locally:
+
+> **Prerequisites**: Python 3.11 or higher is required.
+
+> ⚠️ **Important Note About Environment Variables**  
+> While the Claude Desktop configuration above shows environment variables being passed directly in the configuration, this approach doesn't work reliably with Cursor.  
+> Instead, we'll use `python-dotenv` to load these from a `.env` file, which provides a more reliable solution.
+
+First, create the necessary directories and set up the virtual environment:
+
+```shell
+# Create directories
+mkdir -Force .cursor
+mkdir -Force .cursor/mcp
+
+# Create and activate a virtual environment
+python -m venv .cursor/venv
+.cursor\venv\Scripts\activate
+
+# Install packages
+pip install git+https://github.com/ericallensalmon/mssql_mcp_server.git
+pip install python-dotenv
+```
+
+Then create three files:
+
+In the `.cursor` directory, create or add this configuration:
+1. `mcp.json`:
+```json
+{
+    "mcpServers": {
+        "mssql": {
+            "command": "absolute\\path\\to\\.cursor\\venv\\Scripts\\python.exe",
+            "args": [
+                "absolute\\path\\to\\.cursor\\run_server.py"
+            ]
+        }
+    }
+} 
+```
+
+Add these two files in the `.cursor/mcp` directory:
+1. `run_server.py`:
+```python
+import os
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Get the absolute path to the directory containing this script
+script_dir = Path(__file__).parent.absolute()
+os.chdir(script_dir)  # Change to the script directory to ensure relative paths work
+
+# Add the src directory to Python path
+src_path = script_dir / "src"
+sys.path.insert(0, str(src_path))
+
+# Load environment variables from .env file in the same directory as this script
+env_path = script_dir / ".env"
+load_dotenv(dotenv_path=env_path)
+
+# Import and run the server
+from mssql_mcp_server.server import main
+import asyncio
+
+if __name__ == "__main__":
+    print(f"Starting server from {script_dir}")
+    print(f"Changed working directory to: {os.getcwd()}")
+    print(f"Python path: {sys.path}")
+    print(f"Environment loaded from: {env_path}")
+    asyncio.run(main()) 
+```
+
+2. `.env`:
+```ini
+MSSQL_DRIVER=ODBC Driver 18 for SQL Server
+MSSQL_HOST=localhost
+MSSQL_USER=your_username
+MSSQL_PASSWORD=your_password
+MSSQL_DATABASE=your_database
+```
+
+After setting up the environment:
+1. Edit `.cursor/mcp/.env` with your actual database credentials
+2. Make sure your SQL Server instance is running and accessible
+3. Check Cursor Settings -> MCP and verify that the `mssql` MCP server is running and the `execute_sql` tool is available
+
+If needed, test the connection by running `python .cursor/mcp/run_server.py` from the activated virtual environment
+
+> **Note**: The `pyodbc` package requires the Microsoft ODBC Driver for SQL Server to be installed on your system:
+> - **Windows**: Download from [Microsoft Download Center](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
+> - **Linux**: Follow [SQL Server installation guide for Linux](https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)
+> - **macOS**: Follow [SQL Server installation guide for macOS](https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/install-microsoft-odbc-driver-sql-server-macos)
+>
+> The default driver name in the `.env` file assumes ODBC Driver 18, but you should use whatever version you have installed.
 
 ### Running as a Standalone Server
 
