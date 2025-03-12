@@ -2,6 +2,8 @@
 
 > This is a fork of [mssql_mcp_server](https://github.com/JexinSam/mssql_mcp_server) by [JexinSam](https://github.com/JexinSam). The original project provides a Model Context Protocol server for MSSQL databases.
 
+[![Tests](https://github.com/ericallensalmon/mssql_mcp_server/actions/workflows/test.yml/badge.svg)](https://github.com/ericallensalmon/mssql_mcp_server/actions/workflows/test.yml)
+
 MSSQL MCP Server is a **Model Context Protocol (MCP) server** that enables secure and structured interaction with **Microsoft SQL Server (MSSQL)** databases. It allows AI assistants to:
 - List available tables
 - Read table contents
