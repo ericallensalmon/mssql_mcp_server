@@ -1,4 +1,4 @@
-![Tests](https://github.com/JexinSam/mssql_mcp_server/actions/workflows/test.yml/badge.svg)
+Forked from [MSSQL MCP Server](https://github.com/JexinSam/mssql_mcp_server)
 
 # MSSQL MCP Server
 
@@ -109,7 +109,7 @@ For a secure setup:
 4. **Enable SQL Server logging and monitoring** for auditing.
 5. **Review database access regularly** to prevent unauthorized access.
 
-For detailed instructions, refer to the **[MSSQL Security Configuration Guide](https://github.com/JexinSam/mssql_mcp_server/blob/main/SECURITY.md)**.
+For detailed instructions, refer to the **[MSSQL Security Configuration Guide](https://github.com/ericallensalmon/mssql_mcp_server/blob/main/SECURITY.md)**.
 
 ⚠️ **IMPORTANT:** Always follow the **Principle of Least Privilege** when configuring database access.
 
@@ -126,9 +126,4 @@ We welcome contributions! To contribute:
 3. Commit your changes: `git commit -m 'Add amazing feature'`
 4. Push to the branch: `git push origin feature/amazing-feature`
 5. Open a **Pull Request**.
-
----
-
-### Need Help?
-For any questions or issues, feel free to open a GitHub **[Issue](https://github.com/JexinSam/mssql_mcp_server/issues)** or reach out to the maintainers.
 
