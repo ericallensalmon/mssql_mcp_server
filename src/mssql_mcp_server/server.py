@@ -128,6 +128,14 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["query"]
             }
+        ),
+        Tool(
+            name="show_tables",
+            description="List all tables in the current database",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            }
         )
     ]
 
@@ -137,41 +145,48 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     config, connection_string = get_db_config()
     logger.info(f"Calling tool: {name} with arguments: {arguments}")
     
-    if name != "execute_sql":
-        raise ValueError(f"Unknown tool: {name}")
-    
-    query = arguments.get("query")
-    if not query:
-        raise ValueError("Query is required")
-    
     try:
         with connect(connection_string) as conn:
             with conn.cursor() as cursor:
-                cursor.execute(query)
-                
-                # Special handling for listing tables in MSSQL
-                if query.strip().upper() == "SHOW TABLES":
+                if name == "show_tables":
                     cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';")
                     tables = cursor.fetchall()
                     result = [f"Tables_in_{config['database']}"]  # Header
                     result.extend([table[0] for table in tables])
                     return [TextContent(type="text", text="\n".join(result))]
                 
-                # Regular SELECT queries
-                elif query.strip().upper().startswith("SELECT"):
-                    columns = [desc[0] for desc in cursor.description]
-                    rows = cursor.fetchall()
-                    result = [",".join(map(str, row)) for row in rows]
-                    return [TextContent(type="text", text="\n".join([",".join(columns)] + result))]
+                elif name == "execute_sql":
+                    query = arguments.get("query")
+                    if not query:
+                        raise ValueError("Query is required")
+                    
+                    # Remove comments and whitespace for command detection
+                    cleaned_query = "\n".join(
+                        line for line in query.splitlines()
+                        if not line.strip().startswith('--')
+                    ).strip()
+                    
+                    # Execute the original query (with comments preserved)
+                    cursor.execute(query)
+                    
+                    # Regular SELECT queries
+                    if cleaned_query.strip().upper().startswith("SELECT"):
+                        columns = [desc[0] for desc in cursor.description]
+                        rows = cursor.fetchall()
+                        result = [",".join(map(str, row)) for row in rows]
+                        return [TextContent(type="text", text="\n".join([",".join(columns)] + result))]
+                    
+                    # Non-SELECT queries
+                    else:
+                        conn.commit()
+                        return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {cursor.rowcount}")]
                 
-                # Non-SELECT queries
                 else:
-                    conn.commit()
-                    return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {cursor.rowcount}")]
-                
+                    raise ValueError(f"Unknown tool: {name}")
+                    
     except Exception as e:
-        logger.error(f"Error executing SQL '{query}': {e}")
-        return [TextContent(type="text", text=f"Error executing query: {str(e)}")]
+        logger.error(f"Error executing tool '{name}': {e}")
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
 
 async def main():
     """Main entry point to run the MCP server."""
