@@ -9,92 +9,122 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-sql-variants:
-    name: Test SQL Server Variants
+  test-mssql:
+    name: Test with MSSQL
     runs-on: ubuntu-latest
     
-    strategy:
-      matrix:
-        include:
-          - variant: mssql-2019
-            image: mcr.microsoft.com/mssql/server:2019-latest
-            python: "3.11"
-          - variant: mssql-2019
-            image: mcr.microsoft.com/mssql/server:2019-latest
-            python: "3.12"
-          - variant: azure-sql-edge
-            image: mcr.microsoft.com/azure-sql-edge:latest
-            python: "3.11"
-          - variant: azure-sql-edge
-            image: mcr.microsoft.com/azure-sql-edge:latest
-            python: "3.12"
-
     services:
-      sql:
-        image: ${{ matrix.image }}
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2019-latest 
         env:
           ACCEPT_EULA: Y
-          SA_PASSWORD: TestPassword123!
-          MSSQL_PID: Developer
+          MSSQL_PID: Express
+          MSSQL_SA_PASSWORD: testpassword
         ports:
-          - 1433
-        options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P TestPassword123! -Q 'SELECT 1' || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          - 1433:1433
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Set up Python ${{ matrix.python }}
-      uses: actions/setup-python@v5
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python }}
-
+        python-version: ${{ matrix.python-version }}
+    
     - name: Install ODBC Driver
       run: |
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
         curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
-
-    - name: Verify ODBC Installation
-      run: |
-        echo "Available ODBC Drivers:"
-        python3 -c "import pyodbc; print('\n'.join(pyodbc.drivers()))"
-
+        
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install -r requirements.txt
         pip install -r requirements-dev.txt
         pip install -e .
+        
+    - name: Verify installation
+      run: |
+        # Show Python path
+        python -c "import sys; print('\n'.join(sys.path))"
+        # Try importing the module
+        python -c "import mssql_mcp_server; print('Module found at:', mssql_mcp_server.__file__)"
+        # List installed packages
+        pip list | grep mssql
+        # Show the content of site-packages
+        ls -R $(python -c "import site; print(site.getsitepackages()[0])")
+        # Verify ODBC drivers
+        python -c "import pyodbc; print('Available ODBC drivers:', pyodbc.drivers())"
 
     - name: Run tests
       env:
-        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_HOST: localhost
         MSSQL_USER: sa
-        MSSQL_PASSWORD: TestPassword123!
+        MSSQL_PASSWORD: testpassword
         MSSQL_DATABASE: master
-        MSSQL_PORT: ${{ job.services.sql.ports[1433] }}
-        AZURE_SQL_ENCRYPT: ${{ matrix.variant == 'azure-sql-edge' && 'yes' || 'no' }}
-        AZURE_SQL_TRUST_SERVER_CERTIFICATE: ${{ matrix.variant == 'azure-sql-edge' && 'yes' || 'no' }}
-        AZURE_SQL_CONNECTION_TIMEOUT: 30
-        PYTEST_ADDOPTS: "-v"
       run: |
-        # Print connection details for debugging
-        echo "Testing ${{ matrix.variant }} with Python ${{ matrix.python }}"
-        echo "Host: $MSSQL_HOST"
-        echo "Port: $MSSQL_PORT"
-        echo "Driver: $MSSQL_DRIVER"
-        
-        if [ "${{ matrix.variant }}" = "azure-sql-edge" ]; then
-          # Run tests excluding Azure SQL security tests first
-          pytest tests/ --ignore=tests/test_azure_sql_security.py
-          # Then run Azure SQL specific security tests
-          pytest tests/test_azure_sql_security.py -v
-        else
-          # Run all tests for regular SQL Server
-          pytest tests/
-        fi
+        python -m pytest -v
+
+  test-azure-sql:
+    name: Test with Azure SQL
+    runs-on: ubuntu-latest
+    
+    services:
+      azuresql:
+        image: mcr.microsoft.com/azure-sql-edge:latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: testpassword
+        ports:
+          - 1433:1433
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install -e .
+
+    - name: Wait for Azure SQL Edge to be ready
+      run: |
+        for i in {1..60}; do
+          if /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testpassword -Q "SELECT 1" &> /dev/null; then
+            echo "Azure SQL Edge is ready"
+            break
+          fi
+          echo "Waiting for Azure SQL Edge to be ready..."
+          sleep 1
+        done
+    
+    - name: Run tests
+      env:
+        MSSQL_HOST: localhost
+        MSSQL_USER: sa
+        MSSQL_PASSWORD: testpassword
+        MSSQL_DATABASE: master
+        AZURE_SQL_ENCRYPT: yes
+        AZURE_SQL_TRUST_SERVER_CERTIFICATE: yes
+        AZURE_SQL_CONNECTION_TIMEOUT: 30
+      run: |
+        # Run general tests
+        python -m pytest -v tests --ignore=tests/test_azure_sql_security.py
+        # Run Azure SQL specific security tests
+        python -m pytest -v tests/test_azure_sql_security.py -v
