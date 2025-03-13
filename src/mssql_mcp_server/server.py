@@ -322,6 +322,10 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                     )]
                                 )
                         
+                        # Check if this is a DDL operation
+                        is_ddl = any(keyword in cleaned_query.upper() for keyword in 
+                            ["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE", "DENY"])
+                        
                         # Execute the query
                         cursor.execute(query)
                         
@@ -347,23 +351,18 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                         )]
                                     )
                         
-                        # Check if this is a DDL operation
-                        is_ddl = any(keyword in cleaned_query.upper() for keyword in 
-                            ["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE", "DENY"])
-                        
-                        if is_ddl:
-                            # For DDL operations, check if we got any error messages
-                            if cursor.messages:
-                                last_msg = str(cursor.messages[-1])
-                                if any(err in last_msg.lower() for err in 
-                                    ["permission", "privilege", "access denied", "not authorized"]):
-                                    return CallToolResult(
-                                        isError=True,
-                                        content=[TextContent(
-                                            type="text",
-                                            text=f"Permission denied: {last_msg}"
-                                        )]
-                                    )
+                        # For DDL operations, check if we got any error messages
+                        if is_ddl and cursor.messages:
+                            last_msg = str(cursor.messages[-1])
+                            if any(err in last_msg.lower() for err in 
+                                ["permission", "privilege", "access denied", "not authorized"]):
+                                return CallToolResult(
+                                    isError=True,
+                                    content=[TextContent(
+                                        type="text",
+                                        text=f"Permission denied: {last_msg}"
+                                    )]
+                                )
                         
                         # Regular SELECT queries
                         if cleaned_query.strip().upper().startswith("SELECT"):
@@ -400,6 +399,19 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                     text=f"Permission denied: {error_msg}"
                                 )]
                             )
+                        
+                        # Check if this is a DDL operation that failed
+                        if is_ddl and cursor.messages:
+                            last_msg = str(cursor.messages[-1])
+                            if any(err in last_msg.lower() for err in 
+                                ["permission", "privilege", "access denied", "not authorized"]):
+                                return CallToolResult(
+                                    isError=True,
+                                    content=[TextContent(
+                                        type="text",
+                                        text=f"Permission denied: {last_msg}"
+                                    )]
+                                )
                         
                         return CallToolResult(
                             isError=True,
