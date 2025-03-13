@@ -130,7 +130,7 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="show_tables",
+            name="list_tables",
             description="List all tables in the current database",
             inputSchema={
                 "type": "object",
@@ -145,20 +145,35 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     config, connection_string = get_db_config()
     logger.info(f"Calling tool: {name} with arguments: {arguments}")
     
+    # Validate tool name
+    if name not in ["execute_sql", "list_tables"]:
+        return [TextContent(
+            type="text",
+            text=f"Error: Unknown tool: {name}",
+            isError=True
+        )]
+    
     try:
         with connect(connection_string) as conn:
             with conn.cursor() as cursor:
-                if name == "show_tables":
+                if name == "list_tables":
                     cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';")
                     tables = cursor.fetchall()
                     result = [f"Tables_in_{config['database']}"]  # Header
                     result.extend([table[0] for table in tables])
-                    return [TextContent(type="text", text="\n".join(result))]
+                    return [TextContent(
+                        type="text",
+                        text="\n".join(result)
+                    )]
                 
                 elif name == "execute_sql":
                     query = arguments.get("query")
                     if not query:
-                        raise ValueError("Query is required")
+                        return [TextContent(
+                            type="text",
+                            text="Error: Query is required",
+                            isError=True
+                        )]
                     
                     # Remove comments and whitespace for command detection
                     cleaned_query = "\n".join(
@@ -174,19 +189,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         columns = [desc[0] for desc in cursor.description]
                         rows = cursor.fetchall()
                         result = [",".join(map(str, row)) for row in rows]
-                        return [TextContent(type="text", text="\n".join([",".join(columns)] + result))]
+                        return [TextContent(
+                            type="text",
+                            text="\n".join([",".join(columns)] + result)
+                        )]
                     
                     # Non-SELECT queries
                     else:
                         conn.commit()
-                        return [TextContent(type="text", text=f"Query executed successfully. Rows affected: {cursor.rowcount}")]
-                
-                else:
-                    raise ValueError(f"Unknown tool: {name}")
+                        return [TextContent(
+                            type="text",
+                            text=f"Query executed successfully. Rows affected: {cursor.rowcount}"
+                        )]
                     
     except Exception as e:
         logger.error(f"Error executing tool '{name}': {e}")
-        return [TextContent(type="text", text=f"Error: {str(e)}")]
+        return [TextContent(
+            type="text",
+            text=f"Error: {str(e)}",
+            isError=True
+        )]
 
 async def main():
     """Main entry point to run the MCP server."""
