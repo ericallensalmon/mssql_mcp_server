@@ -86,7 +86,7 @@ To integrate with **Claude Desktop**, add this configuration to `claude_desktop_
 }
 ```
 
-### Using with Cursor AI (requires Agent model with MCP support)
+### With Cursor AI (requires Agent model with MCP support)
 
 To integrate with **Cursor**, you'll need to set up a virtual environment and install the MCP server locally:
 
@@ -102,14 +102,14 @@ First, create the necessary directories and set up the virtual environment:
 # Create directories
 mkdir -Force .cursor
 mkdir -Force .cursor/mcp
+mkdir -Force .cursor/mcp/mssql-mcp-server
 
 # Create and activate a virtual environment
 python -m venv .cursor/venv
-.cursor\venv\Scripts\activate
+.cursor/venv/Scripts/activate
 
 # Install packages
 pip install git+https://github.com/ericallensalmon/mssql_mcp_server.git
-pip install python-dotenv
 ```
 
 Then create three files:
@@ -120,16 +120,16 @@ In the `.cursor` directory, create or add this configuration:
 {
     "mcpServers": {
         "mssql": {
-            "command": "absolute\\path\\to\\.cursor\\venv\\Scripts\\python.exe",
+            "command": "absolute/path/to/.cursor/venv/Scripts/python.exe",
             "args": [
-                "absolute\\path\\to\\.cursor\\run_server.py"
+                "absolute/path/to/.cursor/run_server.py"
             ]
         }
     }
 } 
 ```
 
-Add these two files in the `.cursor/mcp` directory:
+Add these two files in the `.cursor/mcp/mssql-mcp-server` directory:
 1. `run_server.py`:
 ```python
 import os
@@ -171,11 +171,11 @@ MSSQL_DATABASE=your_database
 ```
 
 After setting up the environment:
-1. Edit `.cursor/mcp/.env` with your actual database credentials
+1. Edit `.cursor/mcp/mssql-mcp-server/.env` with your actual database credentials
 2. Make sure your SQL Server instance is running and accessible
 3. Check Cursor Settings -> MCP and verify that the `mssql` MCP server is running and the `execute_sql` tool is available
 
-If needed, test the connection by running `python .cursor/mcp/run_server.py` from the activated virtual environment
+If needed, test the connection by running `python .cursor/mcp/mssql-mcp-server/run_server.py` from the activated virtual environment
 
 > **Note**: The `pyodbc` package requires the Microsoft ODBC Driver for SQL Server to be installed on your system:
 > - **Windows**: Download from [Microsoft Download Center](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
@@ -198,7 +198,7 @@ python -m mssql_mcp_server
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/mssql_mcp_server.git
+git clone https://github.com/ericallensalmon/mssql_mcp_server.git
 cd mssql_mcp_server
 
 # Set up a virtual environment
