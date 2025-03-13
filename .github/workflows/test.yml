@@ -35,12 +35,33 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Install ODBC Driver
+    - name: Install ODBC Driver and Tools
       run: |
-        curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        # Import Microsoft repository key
+        curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+        
+        # Add Microsoft repository
+        curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        
+        # Update package list
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
+        
+        # Install ODBC Driver
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
+        
+        # Install SQL Server tools
+        sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
+        
+        # Add SQL Server tools to path
+        echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+        source ~/.bashrc
+        
+        # Install UnixODBC development headers
+        sudo apt-get install -y unixodbc-dev
+        
+        # Verify installations
+        odbcinst -j
+        ls -l /opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.*
         
     - name: Install dependencies
       run: |
@@ -68,6 +89,7 @@ jobs:
         MSSQL_USER: sa
         MSSQL_PASSWORD: testpassword
         MSSQL_DATABASE: master
+        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
       run: |
         python -m pytest -v
 
