@@ -9,62 +9,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    services:
-      sql:
-        image: mcr.microsoft.com/mssql/server:2019-latest
-        env:
-          ACCEPT_EULA: Y
-          SA_PASSWORD: YourStrong!Passw0rd
-          MSSQL_PID: Developer
-        ports:
-          - 1433
-        options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong!Passw0rd -Q 'SELECT 1' || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install ODBC Driver
-      run: |
-        curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-        sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
-        pip install -e .
-
-    - name: Run tests
-      env:
-        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
-        MSSQL_HOST: localhost
-        MSSQL_USER: sa
-        MSSQL_PASSWORD: YourStrong!Passw0rd
-        MSSQL_DATABASE: master
-        PORT: ${{ job.services.sql.ports[1433] }}
-      run: |
-        # Register pytest integration mark
-        echo "[pytest]" > pytest.ini
-        echo "markers =" >> pytest.ini
-        echo "    integration: marks tests as integration tests" >> pytest.ini
-        
-        # Run tests with verbose output
-        pytest tests/ -v
-
   test-mssql:
     name: Test with MSSQL
     runs-on: ubuntu-latest
@@ -91,30 +35,32 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Install ODBC Driver
-      run: |
-        curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-        sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
-    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
         pip install -e .
+        
+    - name: Verify installation
+      run: |
+        # Show Python path
+        python -c "import sys; print('\n'.join(sys.path))"
+        # Try importing the module
+        python -c "import mssql_mcp_server; print('Module found at:', mssql_mcp_server.__file__)"
+        # List installed packages
+        pip list | grep mssql
+        # Show the content of site-packages
+        ls -R $(python -c "import site; print(site.getsitepackages()[0])")
 
     - name: Run tests
       env:
-        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_HOST: localhost
         MSSQL_USER: sa
         MSSQL_PASSWORD: testpassword
         MSSQL_DATABASE: master
-        PORT: ${{ job.services.mssql.ports[1433] }}
       run: |
-        pytest tests/ -v
+        python -m pytest -v
 
   test-azure-sql:
     name: Test with Azure SQL
@@ -141,13 +87,6 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Install ODBC Driver
-      run: |
-        curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-        sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -155,17 +94,28 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -e .
 
+    - name: Wait for Azure SQL Edge to be ready
+      run: |
+        for i in {1..60}; do
+          if /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testpassword -Q "SELECT 1" &> /dev/null; then
+            echo "Azure SQL Edge is ready"
+            break
+          fi
+          echo "Waiting for Azure SQL Edge to be ready..."
+          sleep 1
+        done
+    
     - name: Run tests
       env:
-        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_HOST: localhost
         MSSQL_USER: sa
         MSSQL_PASSWORD: testpassword
         MSSQL_DATABASE: master
-        PORT: ${{ job.services.azuresql.ports[1433] }}
         AZURE_SQL_ENCRYPT: yes
         AZURE_SQL_TRUST_SERVER_CERTIFICATE: yes
         AZURE_SQL_CONNECTION_TIMEOUT: 30
       run: |
-        pytest tests/ -v --ignore=tests/test_azure_sql_security.py
-        pytest tests/test_azure_sql_security.py -v
+        # Run general tests
+        python -m pytest -v tests --ignore=tests/test_azure_sql_security.py
+        # Run Azure SQL specific security tests
+        python -m pytest -v tests/test_azure_sql_security.py -v
