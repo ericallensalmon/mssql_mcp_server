@@ -109,9 +109,10 @@ jobs:
       run: |
         # Test direct connection first
         python -c "
+        import os
         import pyodbc
         print('Testing connection...')
-        conn_str = f'DRIVER={MSSQL_DRIVER};SERVER={MSSQL_HOST};DATABASE={MSSQL_DATABASE};UID={MSSQL_USER};PWD={MSSQL_PASSWORD};TrustServerCertificate=yes;'
+        conn_str = f'DRIVER={os.environ["MSSQL_DRIVER"]};SERVER={os.environ["MSSQL_HOST"]};DATABASE={os.environ["MSSQL_DATABASE"]};UID={os.environ["MSSQL_USER"]};PWD={os.environ["MSSQL_PASSWORD"]};TrustServerCertificate=yes;'
         print(f'Connection string: {conn_str}')
         conn = pyodbc.connect(conn_str, timeout=30)
         cursor = conn.cursor()
