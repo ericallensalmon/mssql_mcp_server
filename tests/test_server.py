@@ -174,7 +174,7 @@ async def test_list_tables_functionality():
     # Test list_tables
     result = await call_tool("list_tables", {})
     assert len(result) == 1
-    assert result[0].isError is False
+    assert not hasattr(result[0], 'isError')  # Success cases don't set isError
     assert "test_table1" in result[0].text
     assert "test_table2" in result[0].text
     
