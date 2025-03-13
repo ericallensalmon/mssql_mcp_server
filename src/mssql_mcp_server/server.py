@@ -7,10 +7,14 @@ from pyodbc import connect, Error
 from mcp.server import Server
 from mcp.types import Resource, Tool, TextContent as BaseTextContent
 from pydantic import AnyUrl, Field
+from typing import Optional
 
 class TextContent(BaseTextContent):
     """Extended TextContent class that supports isError attribute."""
-    isError: bool | None = Field(default=None)
+    def __init__(self, **data):
+        if 'isError' in data and data['isError'] is None:
+            del data['isError']
+        super().__init__(**data)
 
 # Configure logging
 logging.basicConfig(
@@ -237,7 +241,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(
             type="text",
             text=f"Error: Unknown tool: {name}",
-            isError=True
+            isError=True  # Error case
         )]
     
     # Validate required parameters before attempting database connection
@@ -245,7 +249,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(
             type="text",
             text="Error: Query is required",
-            isError=True
+            isError=True  # Error case
         )]
     
     # Get database configuration and attempt connection
@@ -260,7 +264,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     result.extend([table[0] for table in tables])
                     return [TextContent(
                         type="text",
-                        text="\n".join(result)
+                        text="\n".join(result)  # Success case - no isError
                     )]
                 
                 elif name == "execute_sql":
@@ -272,25 +276,33 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         if not line.strip().startswith('--')
                     ).strip()
                     
-                    # Execute the original query (with comments preserved)
-                    cursor.execute(query)
-                    
-                    # Regular SELECT queries
-                    if cleaned_query.strip().upper().startswith("SELECT"):
-                        columns = [desc[0] for desc in cursor.description]
-                        rows = cursor.fetchall()
-                        result = [",".join(map(str, row)) for row in rows]
+                    try:
+                        # Execute the original query (with comments preserved)
+                        cursor.execute(query)
+                        
+                        # Regular SELECT queries
+                        if cleaned_query.strip().upper().startswith("SELECT"):
+                            columns = [desc[0] for desc in cursor.description]
+                            rows = cursor.fetchall()
+                            result = [",".join(map(str, row)) for row in rows]
+                            return [TextContent(
+                                type="text",
+                                text="\n".join([",".join(columns)] + result)  # Success case - no isError
+                            )]
+                        
+                        # Non-SELECT queries
+                        else:
+                            conn.commit()
+                            return [TextContent(
+                                type="text",
+                                text=f"Query executed successfully. Rows affected: {cursor.rowcount}"  # Success case - no isError
+                            )]
+                    except Error as e:
+                        # SQL-specific errors
                         return [TextContent(
                             type="text",
-                            text="\n".join([",".join(columns)] + result)
-                        )]
-                    
-                    # Non-SELECT queries
-                    else:
-                        conn.commit()
-                        return [TextContent(
-                            type="text",
-                            text=f"Query executed successfully. Rows affected: {cursor.rowcount}"
+                            text=f"Error: {str(e)}",
+                            isError=True  # Error case
                         )]
                     
     except Exception as e:
@@ -298,7 +310,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(
             type="text",
             text=f"Error: {str(e)}",
-            isError=True
+            isError=True  # Error case
         )]
 
 async def main():
