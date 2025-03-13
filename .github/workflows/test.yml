@@ -50,20 +50,35 @@ jobs:
         sudo apt-get update
         
         # Install ODBC Driver and tools
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 mssql-tools
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 mssql-tools unixodbc-dev
         
         # Add SQL Server tools to path
         echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
         source ~/.bashrc
         
-        # Install UnixODBC development headers
-        sudo apt-get install -y unixodbc-dev
-        
-        # Verify installations
-        echo "ODBC Driver configuration:"
-        odbcinst -j
+        # Verify driver installation and configuration
+        echo "Checking ODBC installation..."
+        sudo odbcinst -j
         echo "Available ODBC drivers:"
-        odbcinst -q -d
+        sudo odbcinst -q -d
+        echo "Driver locations:"
+        ls -l /opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.*
+        echo "Driver configuration:"
+        cat /etc/odbcinst.ini
+        
+        # Ensure proper permissions
+        sudo chmod 644 /etc/odbcinst.ini
+        sudo chmod 755 /opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.*
+        
+        # Create a test DSN to verify configuration
+        echo "[MSSQL]
+        Driver = ODBC Driver 17 for SQL Server
+        Server = localhost,1433
+        Database = master" | sudo tee /etc/odbc.ini
+        
+        # Show final ODBC configuration
+        echo "Final ODBC configuration:"
+        cat /etc/odbc.ini
         
     - name: Install dependencies
       run: |
@@ -102,12 +117,17 @@ jobs:
         MSSQL_USER: sa
         MSSQL_PASSWORD: P@ssw0rd2024
         MSSQL_DATABASE: master
-        MSSQL_DRIVER: "{ODBC Driver 17 for SQL Server}"
+        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_PORT: 1433
         MSSQL_CONNECT_TIMEOUT: 30
         MSSQL_TRUST_SERVER_CERTIFICATE: yes
       run: |
-        python -c "import os; import pyodbc; print('Testing connection...'); driver=os.environ['MSSQL_DRIVER']; server=os.environ['MSSQL_HOST']; db=os.environ['MSSQL_DATABASE']; uid=os.environ['MSSQL_USER']; pwd=os.environ['MSSQL_PASSWORD']; conn_str=f'DRIVER={driver};SERVER={server};DATABASE={db};UID={uid};PWD={pwd};TrustServerCertificate=yes'; print(f'Connection string: {conn_str}'); conn=pyodbc.connect(conn_str, timeout=30); cursor=conn.cursor(); cursor.execute('SELECT @@VERSION'); print(cursor.fetchone()[0]); conn.close()"
+        # Show driver configuration
+        echo "Driver configuration:"
+        cat /etc/odbcinst.ini
+        
+        # Test connection
+        python -c 'import os,pyodbc;print("Testing connection...");driver=os.environ["MSSQL_DRIVER"];server=f"tcp:{os.environ[\"MSSQL_HOST\"]},{os.environ[\"MSSQL_PORT\"]}";db=os.environ["MSSQL_DATABASE"];uid=os.environ["MSSQL_USER"];pwd=os.environ["MSSQL_PASSWORD"];conn_str=f"Driver={{{driver}}};Server={server};Database={db};UID={uid};PWD={pwd};TrustServerCertificate=yes;Encrypt=yes";print(f"Connection string: {conn_str}");conn=pyodbc.connect(conn_str,timeout=30);cursor=conn.cursor();cursor.execute("SELECT @@VERSION");print(cursor.fetchone()[0]);conn.close()'
         
         # Run the actual tests
         python -m pytest -v
