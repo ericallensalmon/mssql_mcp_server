@@ -18,7 +18,7 @@ jobs:
         image: mcr.microsoft.com/mssql/server:2019-latest 
         env:
           ACCEPT_EULA: Y
-          MSSQL_PID: Express
+          MSSQL_PID: Developer
           MSSQL_SA_PASSWORD: P@ssw0rd2024
         ports:
           - 1433:1433
@@ -87,15 +87,13 @@ jobs:
 
     - name: Wait for SQL Server
       run: |
-        echo "Waiting for SQL Server to be ready..."
         for i in {1..60}; do
-          if sqlcmd -S tcp:localhost,1433 -U sa -P P@ssw0rd2024 -Q "SELECT @@VERSION" > /dev/null 2>&1; then
+          if /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P P@ssw0rd2024 -Q "SELECT 1" &> /dev/null; then
             echo "SQL Server is ready"
-            sqlcmd -S tcp:localhost,1433 -U sa -P P@ssw0rd2024 -Q "SELECT @@VERSION"
             break
           fi
-          echo "Attempt $i: SQL Server not ready yet..."
-          sleep 2
+          echo "Waiting for SQL Server to be ready..."
+          sleep 1
         done
 
     - name: Run tests
