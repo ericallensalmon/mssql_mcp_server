@@ -34,12 +34,12 @@ jobs:
         image: ${{ matrix.image }}
         env:
           ACCEPT_EULA: Y
-          SA_PASSWORD: testpassword
+          SA_PASSWORD: TestPassword123!
           MSSQL_PID: Developer
         ports:
           - 1433
         options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testpassword -Q 'SELECT 1' || exit 1"
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P TestPassword123! -Q 'SELECT 1' || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -75,7 +75,7 @@ jobs:
         MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_HOST: localhost
         MSSQL_USER: sa
-        MSSQL_PASSWORD: testpassword
+        MSSQL_PASSWORD: TestPassword123!
         MSSQL_DATABASE: master
         MSSQL_PORT: ${{ job.services.sql.ports[1433] }}
         AZURE_SQL_ENCRYPT: ${{ matrix.variant == 'azure-sql-edge' && 'yes' || 'no' }}
