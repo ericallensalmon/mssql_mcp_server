@@ -101,23 +101,23 @@ async def test_column_not_found_error():
 @integration_marker
 async def test_permission_error():
     """Test handling of permission errors with real database."""
-    # Create a test login and user with minimal permissions
-    setup_queries = [
-        "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
-        "CREATE LOGIN test_user WITH PASSWORD = 'TestPass123!'",
-        "CREATE USER test_user FOR LOGIN test_user",
-        "REVOKE ALL FROM test_user",
-        "GRANT CONNECT TO test_user"  # Only grant connect permission
-    ]
-    
-    for query in setup_queries:
-        await call_tool("execute_sql", {"query": query})
-    
     # Store original connection info
     original_user = os.environ.get("MSSQL_USER")
     original_password = os.environ.get("MSSQL_PASSWORD")
     
     try:
+        # Create a test login and user with minimal permissions
+        setup_queries = [
+            "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
+            "CREATE LOGIN test_user WITH PASSWORD = 'TestPass123!'",
+            "CREATE USER test_user FOR LOGIN test_user",
+            "REVOKE ALL FROM test_user",
+            "GRANT CONNECT TO test_user"  # Only grant connect permission
+        ]
+        
+        for query in setup_queries:
+            await call_tool("execute_sql", {"query": query})
+        
         # Switch to test_user context
         os.environ["MSSQL_USER"] = "test_user"
         os.environ["MSSQL_PASSWORD"] = "TestPass123!"
@@ -134,10 +134,7 @@ async def test_permission_error():
         if original_password:
             os.environ["MSSQL_PASSWORD"] = original_password
         
-        # Cleanup - switch back to sa for cleanup
-        os.environ["MSSQL_USER"] = "sa"
-        os.environ["MSSQL_PASSWORD"] = "TestPassword123!"
-        
+        # Cleanup - use original credentials for cleanup
         cleanup_queries = [
             "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
             "IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'test_user') DROP USER test_user"
