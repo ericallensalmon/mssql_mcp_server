@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+import platform
 from pyodbc import connect, Error
 from mcp.server import Server
 from mcp.types import Resource, Tool, TextContent
@@ -13,6 +14,29 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("mssql_mcp_server")
+
+def get_default_driver():
+    """Get the default ODBC driver name based on the platform."""
+    system = platform.system().lower()
+    if system == "windows":
+        return "SQL Server"
+    elif system == "linux":
+        # Try newer drivers first, then fall back to older versions
+        for driver in [
+            "ODBC Driver 18 for SQL Server",
+            "ODBC Driver 17 for SQL Server",
+            "ODBC Driver 13 for SQL Server"
+        ]:
+            try:
+                with connect(f"DRIVER={{{driver}}};SERVER=;") as _:
+                    return driver
+            except:
+                continue
+        return "ODBC Driver 17 for SQL Server"  # Default to 17 if no driver found
+    elif system == "darwin":  # macOS
+        return "ODBC Driver 17 for SQL Server"
+    else:
+        return "SQL Server"  # Generic fallback
 
 # Define transient error codes that should trigger retry
 TRANSIENT_ERROR_CODES = {
@@ -71,12 +95,15 @@ def get_db_connection(connection_string):
 def get_db_config():
     """Get database configuration from environment variables."""
     config = {
-        "driver": os.getenv("MSSQL_DRIVER", "SQL Server"),
+        "driver": os.getenv("MSSQL_DRIVER", get_default_driver()),
         "server": os.getenv("MSSQL_HOST", "localhost"),
         "user": os.getenv("MSSQL_USER"),
         "password": os.getenv("MSSQL_PASSWORD"),
         "database": os.getenv("MSSQL_DATABASE")
     }
+    
+    logger.info(f"Using SQL Server driver: {config['driver']}")
+    
     if not all([config["user"], config["password"], config["database"]]):
         logger.error("Missing required database configuration. Please check environment variables:")
         logger.error("MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE are required")
@@ -88,7 +115,7 @@ def get_db_config():
     # Build connection string based on server type
     if is_azure:
         connection_string = (
-            f"Driver={config['driver']};"
+            f"Driver={{{config['driver']}}};"  # Note the extra braces for Linux ODBC
             f"Server=tcp:{config['server']},1433;"
             f"Database={config['database']};"
             f"UID={config['user']};"
@@ -101,7 +128,13 @@ def get_db_config():
             "Column Encryption Setting=Enabled;"
         )
     else:
-        connection_string = f"Driver={config['driver']};Server={config['server']};UID={config['user']};PWD={config['password']};Database={config['database']};"
+        connection_string = (
+            f"Driver={{{config['driver']}}};"  # Note the extra braces for Linux ODBC
+            f"Server={config['server']};"
+            f"Database={config['database']};"
+            f"UID={config['user']};"
+            f"PWD={config['password']};"
+        )
 
     return config, connection_string
 
