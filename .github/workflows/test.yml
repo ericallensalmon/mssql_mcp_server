@@ -127,7 +127,7 @@ jobs:
         cat /etc/odbcinst.ini
         
         # Test connection
-        python -c 'import os,pyodbc;print("Testing connection...");driver=os.environ["MSSQL_DRIVER"];server=f"tcp:{os.environ[\"MSSQL_HOST\"]},{os.environ[\"MSSQL_PORT\"]}";db=os.environ["MSSQL_DATABASE"];uid=os.environ["MSSQL_USER"];pwd=os.environ["MSSQL_PASSWORD"];conn_str=f"Driver={{{driver}}};Server={server};Database={db};UID={uid};PWD={pwd};TrustServerCertificate=yes;Encrypt=yes";print(f"Connection string: {conn_str}");conn=pyodbc.connect(conn_str,timeout=30);cursor=conn.cursor();cursor.execute("SELECT @@VERSION");print(cursor.fetchone()[0]);conn.close()'
+        python3 -c "import os,pyodbc;d=os.environ;c=pyodbc.connect('Driver={'+d['MSSQL_DRIVER']+'};Server=tcp:'+d['MSSQL_HOST']+','+d['MSSQL_PORT']+';Database='+d['MSSQL_DATABASE']+';UID='+d['MSSQL_USER']+';PWD='+d['MSSQL_PASSWORD']+';TrustServerCertificate=yes;Encrypt=yes',timeout=30);print(c.cursor().execute('SELECT @@VERSION').fetchone()[0]);c.close()"
         
         # Run the actual tests
         python -m pytest -v
