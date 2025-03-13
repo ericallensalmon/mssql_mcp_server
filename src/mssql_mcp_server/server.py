@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from pyodbc import connect, Error
 from mcp.server import Server
 from mcp.types import Resource, Tool, TextContent
@@ -12,6 +13,60 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("mssql_mcp_server")
+
+# Define transient error codes that should trigger retry
+TRANSIENT_ERROR_CODES = {
+    '40613',  # Database not currently available
+    '40501',  # Service is busy
+    '40197',  # Error processing request
+    '10928',  # Resource limit reached
+    '10929',  # Resource limit reached
+    '10053',  # Transport-level error
+    '10054',  # Transport-level error
+    '10060',  # Network error
+    '40143',  # Connection could not be initialized
+}
+
+def is_transient_error(e):
+    """Check if the error is transient and should be retried."""
+    if not hasattr(e, 'args') or not e.args:
+        return False
+    
+    error_msg = str(e.args[0])
+    # Extract error code from the message
+    for code in TRANSIENT_ERROR_CODES:
+        if f"({code})" in error_msg:
+            return True
+    return False
+
+def retry_on_transient_error(max_attempts=5, initial_delay=1, max_delay=30):
+    """Decorator to retry operations on transient errors with exponential backoff."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if not is_transient_error(e) or attempt == max_attempts - 1:
+                        raise
+                    
+                    # Calculate delay with exponential backoff
+                    sleep_time = min(delay * (2 ** attempt), max_delay)
+                    logger.info(f"Transient error occurred, retrying in {sleep_time} seconds... (Attempt {attempt + 1}/{max_attempts})")
+                    time.sleep(sleep_time)
+            
+            raise last_exception
+        return wrapper
+    return decorator
+
+@retry_on_transient_error()
+def get_db_connection(connection_string):
+    """Create a database connection with retry logic."""
+    return connect(connection_string)
 
 def get_db_config():
     """Get database configuration from environment variables."""
@@ -27,30 +82,26 @@ def get_db_config():
         logger.error("MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE are required")
         raise ValueError("Missing required database configuration")
     
-    
     # Detect if server is Azure SQL based on domain name
     is_azure = ".database.windows.net" in config["server"].lower()
     
     # Build connection string based on server type
     if is_azure:
-       # Note: Azure SQL Database manages its own SSL certificates, no need to specify a certificate
         connection_string = (
             f"Driver={config['driver']};"
-            f"Server=tcp:{config['server']},1433;"  # Explicit TCP protocol and port
+            f"Server=tcp:{config['server']},1433;"
             f"Database={config['database']};"
             f"UID={config['user']};"
             f"PWD={config['password']};"
-            "Encrypt=yes;"  # Always encrypt for Azure SQL
-            "TrustServerCertificate=no;"  # Validate Azure's SSL certificate
-            "Connection Timeout=30;"  # Reasonable timeout
-            "ApplicationIntent=ReadWrite;"  # Explicit application intent
-            "MultiSubnetFailover=yes;"  # Support for Azure high availability
-            "Column Encryption Setting=Enabled;"  # Enable Always Encrypted if configured
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+            "ApplicationIntent=ReadWrite;"
+            "MultiSubnetFailover=yes;"
+            "Column Encryption Setting=Enabled;"
         )
     else:
-        # Standard SQL Server connection string
         connection_string = f"Driver={config['driver']};Server={config['server']};UID={config['user']};PWD={config['password']};Database={config['database']};"
-
 
     return config, connection_string
 
@@ -142,7 +193,6 @@ async def list_tools() -> list[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Execute SQL commands."""
-    config, connection_string = get_db_config()
     logger.info(f"Calling tool: {name} with arguments: {arguments}")
     
     # Validate tool name
@@ -153,8 +203,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             isError=True
         )]
     
+    # Validate required parameters before attempting database connection
+    if name == "execute_sql" and "query" not in arguments:
+        return [TextContent(
+            type="text",
+            text="Error: Query is required",
+            isError=True
+        )]
+    
+    # Get database configuration and attempt connection
     try:
-        with connect(connection_string) as conn:
+        config, connection_string = get_db_config()
+        with get_db_connection(connection_string) as conn:
             with conn.cursor() as cursor:
                 if name == "list_tables":
                     cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';")
@@ -167,13 +227,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     )]
                 
                 elif name == "execute_sql":
-                    query = arguments.get("query")
-                    if not query:
-                        return [TextContent(
-                            type="text",
-                            text="Error: Query is required",
-                            isError=True
-                        )]
+                    query = arguments["query"]  # We already validated it exists
                     
                     # Remove comments and whitespace for command detection
                     cleaned_query = "\n".join(
