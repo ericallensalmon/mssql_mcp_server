@@ -18,10 +18,16 @@ jobs:
         image: mcr.microsoft.com/mssql/server:2019-latest 
         env:
           ACCEPT_EULA: Y
-          MSSQL_PID: Express
-          MSSQL_SA_PASSWORD: testpassword
+          MSSQL_PID: Developer
+          SA_PASSWORD: testpassword
         ports:
           - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testpassword -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 20s
 
     strategy:
       matrix:
@@ -40,17 +46,14 @@ jobs:
         # Import Microsoft repository key
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
         
-        # Add Microsoft repository
+        # Add Microsoft repository for Ubuntu 20.04
         curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         
         # Update package list
         sudo apt-get update
         
-        # Install ODBC Driver
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
-        
-        # Install SQL Server tools
-        sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
+        # Install ODBC Driver and tools
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 mssql-tools
         
         # Add SQL Server tools to path
         echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
@@ -60,8 +63,10 @@ jobs:
         sudo apt-get install -y unixodbc-dev
         
         # Verify installations
+        echo "ODBC Driver configuration:"
         odbcinst -j
-        ls -l /opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.*
+        echo "Available ODBC drivers:"
+        odbcinst -q -d
         
     - name: Install dependencies
       run: |
@@ -83,14 +88,44 @@ jobs:
         # Verify ODBC drivers
         python -c "import pyodbc; print('Available ODBC drivers:', pyodbc.drivers())"
 
+    - name: Wait for SQL Server
+      run: |
+        echo "Waiting for SQL Server to be ready..."
+        for i in {1..60}; do
+          if sqlcmd -S tcp:localhost,1433 -U sa -P testpassword -Q "SELECT @@VERSION" > /dev/null 2>&1; then
+            echo "SQL Server is ready"
+            sqlcmd -S tcp:localhost,1433 -U sa -P testpassword -Q "SELECT @@VERSION"
+            break
+          fi
+          echo "Attempt $i: SQL Server not ready yet..."
+          sleep 2
+        done
+
     - name: Run tests
       env:
         MSSQL_HOST: localhost
         MSSQL_USER: sa
         MSSQL_PASSWORD: testpassword
         MSSQL_DATABASE: master
-        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
+        MSSQL_DRIVER: "{ODBC Driver 17 for SQL Server}"
+        MSSQL_PORT: 1433
+        MSSQL_CONNECT_TIMEOUT: 30
+        MSSQL_TRUST_SERVER_CERTIFICATE: yes
       run: |
+        # Test direct connection first
+        python -c "
+        import pyodbc
+        print('Testing connection...')
+        conn_str = f'DRIVER={MSSQL_DRIVER};SERVER={MSSQL_HOST};DATABASE={MSSQL_DATABASE};UID={MSSQL_USER};PWD={MSSQL_PASSWORD};TrustServerCertificate=yes;'
+        print(f'Connection string: {conn_str}')
+        conn = pyodbc.connect(conn_str, timeout=30)
+        cursor = conn.cursor()
+        cursor.execute('SELECT @@VERSION')
+        print(cursor.fetchone()[0])
+        conn.close()
+        "
+        
+        # Run the actual tests
         python -m pytest -v
 
   test-azure-sql:
