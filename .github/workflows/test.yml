@@ -35,15 +35,33 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install ODBC Driver
+    - name: Install ODBC Driver and Tools
       run: |
-        sudo curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-        sudo curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        # Add Microsoft repository
+        curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
+        curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+        
+        # Install ODBC packages
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
-        sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+        
+        # Configure ODBC driver paths
+        sudo odbcinst -i -s -f /opt/microsoft/msodbcsql18/etc/odbcinst.ini
+        
+        # Verify ODBC driver installation
+        echo "Installed ODBC Drivers:"
+        odbcinst -q -d
+        
+        # Add SQL tools to PATH
         echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc
-        sudo apt-get install -y unixodbc-dev
+        source ~/.bashrc
+        
+        # Verify sqlcmd is available
+        which sqlcmd
+        
+        # Test ODBC connection
+        echo "Testing ODBC connection..."
+        isql -v "DRIVER={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=YourStrong!Passw0rd;TrustServerCertificate=yes" || true
 
     - name: Install dependencies
       run: |
@@ -58,7 +76,15 @@ jobs:
         MSSQL_USER: sa
         MSSQL_PASSWORD: YourStrong!Passw0rd
         MSSQL_DATABASE: master
+        ODBCSYSINI: /etc
+        ODBCINI: /etc/odbc.ini
       run: |
+        # Register pytest integration mark
+        echo "[pytest]" > pytest.ini
+        echo "markers =" >> pytest.ini
+        echo "    integration: marks tests as integration tests" >> pytest.ini
+        
+        # Run tests
         pytest tests/ -v
 
   test-mssql:
