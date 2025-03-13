@@ -278,9 +278,6 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                     ).strip()
                     
                     try:
-                        # Execute the original query (with comments preserved)
-                        cursor.execute(query)
-                        
                         # For transaction queries, we need to check if there were any errors
                         if "BEGIN TRANSACTION" in cleaned_query.upper():
                             try:
@@ -325,6 +322,31 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                     )]
                                 )
                         
+                        # Execute the query
+                        cursor.execute(query)
+                        
+                        # Check for permission errors in cursor messages
+                        if cursor.messages:
+                            for message in cursor.messages:
+                                msg_str = str(message)
+                                if any(code in msg_str for code in ['229', '230', '262', '297', '378']):
+                                    return CallToolResult(
+                                        isError=True,
+                                        content=[TextContent(
+                                            type="text",
+                                            text=f"Permission denied: {msg_str}"
+                                        )]
+                                    )
+                                if any(err in msg_str.lower() for err in 
+                                    ["permission", "privilege", "access denied", "not authorized"]):
+                                    return CallToolResult(
+                                        isError=True,
+                                        content=[TextContent(
+                                            type="text",
+                                            text=f"Permission denied: {msg_str}"
+                                        )]
+                                    )
+                        
                         # Regular SELECT queries
                         if cleaned_query.strip().upper().startswith("SELECT"):
                             columns = [desc[0] for desc in cursor.description]
@@ -339,30 +361,6 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         
                         # Non-SELECT queries
                         else:
-                            # Check for permission errors before committing
-                            if cursor.messages:
-                                for message in cursor.messages:
-                                    if any(code in str(message) for code in ['229', '230', '262', '297', '378']):
-                                        return CallToolResult(
-                                            isError=True,
-                                            content=[TextContent(
-                                                type="text",
-                                                text=f"Permission denied: {str(message)}"
-                                            )]
-                                        )
-                            
-                            # Check for permission errors in the error message
-                            error_msg = str(cursor.messages[-1] if cursor.messages else "")
-                            if any(err in error_msg.lower() for err in 
-                                ["permission", "privilege", "access denied", "not authorized"]):
-                                return CallToolResult(
-                                    isError=True,
-                                    content=[TextContent(
-                                        type="text",
-                                        text=f"Permission denied: {error_msg}"
-                                    )]
-                                )
-                            
                             conn.commit()
                             return CallToolResult(
                                 content=[TextContent(

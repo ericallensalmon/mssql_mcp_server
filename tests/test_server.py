@@ -151,7 +151,7 @@ async def test_transaction_rollback():
     
     # Verify rollback worked (table should be empty)
     verify_result = await call_tool("execute_sql", {"query": "SELECT COUNT(*) as count FROM test_rollback"})
-    assert "0" in verify_result[0].text
+    assert "0" in verify_result.content[0].text
     
     # Cleanup
     await call_tool("execute_sql", {"query": "DROP TABLE test_rollback"})
