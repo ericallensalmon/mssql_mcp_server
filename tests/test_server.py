@@ -1,4 +1,5 @@
 import pytest
+import os
 from mssql_mcp_server.server import app, list_tools, list_resources, read_resource, call_tool
 from pydantic import AnyUrl
 
@@ -39,8 +40,28 @@ async def test_call_tool_missing_query():
     assert result[0].isError is True
     assert "Query is required" in result[0].text
 
+def has_odbc_driver():
+    """Check if the ODBC driver is available."""
+    try:
+        import pyodbc
+        drivers = pyodbc.drivers()
+        return any('SQL Server' in driver for driver in drivers)
+    except Exception:
+        return False
+
+def has_db_config():
+    """Check if database configuration is available."""
+    required_vars = ['MSSQL_HOST', 'MSSQL_USER', 'MSSQL_PASSWORD', 'MSSQL_DATABASE']
+    return all(var in os.environ for var in required_vars)
+
+# Skip integration tests if ODBC driver or DB config is not available
+integration_marker = pytest.mark.skipif(
+    not (has_odbc_driver() and has_db_config()),
+    reason="ODBC driver not found or database configuration not available"
+)
+
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_sql_syntax_error():
     """Test handling of SQL syntax errors with real database."""
     result = await call_tool("execute_sql", {"query": "SELECTT * FROM sys.tables"})
@@ -49,7 +70,7 @@ async def test_sql_syntax_error():
     assert "syntax" in result[0].text.lower()
 
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_table_not_found_error():
     """Test handling of missing table errors with real database."""
     result = await call_tool("execute_sql", {"query": "SELECT * FROM nonexistent_table"})
@@ -58,7 +79,7 @@ async def test_table_not_found_error():
     assert "invalid object name" in result[0].text.lower()
 
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_column_not_found_error():
     """Test handling of missing column errors with real database."""
     # First create a test table
@@ -77,7 +98,7 @@ async def test_column_not_found_error():
     await call_tool("execute_sql", {"query": "DROP TABLE test_table"})
 
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_permission_error():
     """Test handling of permission errors with real database."""
     # Create a test login and user with minimal permissions
@@ -107,7 +128,7 @@ async def test_permission_error():
         await call_tool("execute_sql", {"query": query})
 
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_transaction_rollback():
     """Test handling of transaction rollback with real database."""
     # Setup - create test table
@@ -136,7 +157,7 @@ async def test_transaction_rollback():
     await call_tool("execute_sql", {"query": "DROP TABLE test_rollback"})
 
 @pytest.mark.asyncio
-@pytest.mark.integration
+@integration_marker
 async def test_list_tables_functionality():
     """Test list_tables functionality with real database."""
     # Create test tables
@@ -166,21 +187,11 @@ async def test_list_tables_functionality():
     for query in cleanup_queries:
         await call_tool("execute_sql", {"query": query})
 
-# Skip database-dependent tests if no database connection
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not all([
-        pytest.importorskip("pyodbc"),
-        pytest.importorskip("mssql_mcp_server")
-    ]),
-    reason="MSSQL connection not available"
-)
+@integration_marker
 async def test_list_resources():
     """Test listing resources (requires database connection)."""
-    try:
-        resources = await list_resources()
-        assert isinstance(resources, list)
-    except ValueError as e:
-        if "Missing required database configuration" in str(e):
-            pytest.skip("Database configuration not available")
-        raise
+    resources = await list_resources()
+    assert isinstance(resources, list)
+    # We should have at least system tables
+    assert len(resources) > 0
