@@ -35,7 +35,7 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install ODBC Driver and Tools
+    - name: Install ODBC Drivers and Tools
       run: |
         # Add Microsoft repository
         curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
@@ -43,10 +43,20 @@ jobs:
         
         # Install ODBC packages
         sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 msodbcsql18 mssql-tools18 unixodbc-dev
         
         # Configure ODBC driver paths
+        sudo odbcinst -i -s -f /opt/microsoft/msodbcsql17/etc/odbcinst.ini
         sudo odbcinst -i -s -f /opt/microsoft/msodbcsql18/etc/odbcinst.ini
+        
+        # Create ODBC configuration files
+        echo "[ODBC Driver 17 for SQL Server]" | sudo tee /etc/odbcinst.d/msodbcsql17.ini
+        echo "Description=Microsoft ODBC Driver 17 for SQL Server" | sudo tee -a /etc/odbcinst.d/msodbcsql17.ini
+        echo "Driver=/opt/microsoft/msodbcsql17/lib64/libmsodbcsql-17.*.so.*.*.* " | sudo tee -a /etc/odbcinst.d/msodbcsql17.ini
+        
+        echo "[ODBC Driver 18 for SQL Server]" | sudo tee /etc/odbcinst.d/msodbcsql18.ini
+        echo "Description=Microsoft ODBC Driver 18 for SQL Server" | sudo tee -a /etc/odbcinst.d/msodbcsql18.ini
+        echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.*.so.*.*.* " | sudo tee -a /etc/odbcinst.d/msodbcsql18.ini
         
         # Verify ODBC driver installation
         echo "Installed ODBC Drivers:"
@@ -59,8 +69,11 @@ jobs:
         # Verify sqlcmd is available
         which sqlcmd
         
-        # Test ODBC connection
-        echo "Testing ODBC connection..."
+        # Test ODBC connections
+        echo "Testing ODBC Driver 17 connection..."
+        isql -v "DRIVER={ODBC Driver 17 for SQL Server};Server=localhost;UID=sa;PWD=YourStrong!Passw0rd;TrustServerCertificate=yes" || true
+        
+        echo "Testing ODBC Driver 18 connection..."
         isql -v "DRIVER={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=YourStrong!Passw0rd;TrustServerCertificate=yes" || true
 
     - name: Install dependencies
@@ -71,18 +84,29 @@ jobs:
 
     - name: Run tests
       env:
-        MSSQL_DRIVER: "ODBC Driver 18 for SQL Server"
+        MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
         MSSQL_HOST: localhost
         MSSQL_USER: sa
         MSSQL_PASSWORD: YourStrong!Passw0rd
         MSSQL_DATABASE: master
         ODBCSYSINI: /etc
         ODBCINI: /etc/odbc.ini
+        ODBCSYSINSTINI: /etc/odbcinst.ini
       run: |
         # Register pytest integration mark
         echo "[pytest]" > pytest.ini
         echo "markers =" >> pytest.ini
         echo "    integration: marks tests as integration tests" >> pytest.ini
+        
+        # Wait for SQL Server to be ready
+        for i in {1..30}; do
+          if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P YourStrong!Passw0rd -Q "SELECT 1" &> /dev/null; then
+            echo "SQL Server is ready"
+            break
+          fi
+          echo "Waiting for SQL Server to be ready..."
+          sleep 1
+        done
         
         # Run tests
         pytest tests/ -v
