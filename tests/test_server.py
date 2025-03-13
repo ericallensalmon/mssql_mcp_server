@@ -106,26 +106,45 @@ async def test_permission_error():
         "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
         "CREATE LOGIN test_user WITH PASSWORD = 'TestPass123!'",
         "CREATE USER test_user FOR LOGIN test_user",
-        "REVOKE ALL FROM test_user"
+        "REVOKE ALL FROM test_user",
+        "GRANT CONNECT TO test_user"  # Only grant connect permission
     ]
     
     for query in setup_queries:
         await call_tool("execute_sql", {"query": query})
     
-    # Attempt operation that should fail due to permissions
-    result = await call_tool("execute_sql", {"query": "CREATE TABLE test_table (id INT)"})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert any(err in result.content[0].text.lower() for err in ["permission", "privilege", "access"])
+    # Store original connection info
+    original_user = os.environ.get("MSSQL_USER")
+    original_password = os.environ.get("MSSQL_PASSWORD")
     
-    # Cleanup
-    cleanup_queries = [
-        "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
-        "IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'test_user') DROP USER test_user"
-    ]
-    
-    for query in cleanup_queries:
-        await call_tool("execute_sql", {"query": query})
+    try:
+        # Switch to test_user context
+        os.environ["MSSQL_USER"] = "test_user"
+        os.environ["MSSQL_PASSWORD"] = "TestPass123!"
+        
+        # Attempt operation that should fail due to permissions
+        result = await call_tool("execute_sql", {"query": "CREATE TABLE test_table (id INT)"})
+        assert result.isError is True
+        assert len(result.content) == 1
+        assert any(err in result.content[0].text.lower() for err in ["permission", "privilege", "access"])
+    finally:
+        # Restore original connection info
+        if original_user:
+            os.environ["MSSQL_USER"] = original_user
+        if original_password:
+            os.environ["MSSQL_PASSWORD"] = original_password
+        
+        # Cleanup - switch back to sa for cleanup
+        os.environ["MSSQL_USER"] = "sa"
+        os.environ["MSSQL_PASSWORD"] = "TestPassword123!"
+        
+        cleanup_queries = [
+            "IF EXISTS (SELECT * FROM sys.server_principals WHERE name = 'test_user') DROP LOGIN test_user",
+            "IF EXISTS (SELECT * FROM sys.database_principals WHERE name = 'test_user') DROP USER test_user"
+        ]
+        
+        for query in cleanup_queries:
+            await call_tool("execute_sql", {"query": query})
 
 @pytest.mark.asyncio
 @integration_marker
