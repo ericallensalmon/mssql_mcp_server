@@ -6,14 +6,11 @@ import platform
 from pyodbc import connect, Error
 from mcp.server import Server
 from mcp.types import Resource, Tool, TextContent as BaseTextContent
-from pydantic import AnyUrl
+from pydantic import AnyUrl, Field
 
 class TextContent(BaseTextContent):
     """Extended TextContent class that supports isError attribute."""
-    def __init__(self, *args, isError: bool = None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if isError is not None:
-            self.isError = isError
+    isError: bool | None = Field(default=None)
 
 # Configure logging
 logging.basicConfig(
