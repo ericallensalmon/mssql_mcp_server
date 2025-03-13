@@ -281,6 +281,22 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         # Execute the original query (with comments preserved)
                         cursor.execute(query)
                         
+                        # For transaction queries, we need to check if there were any errors
+                        if "BEGIN TRANSACTION" in cleaned_query.upper():
+                            try:
+                                # Try to fetch results - this will raise an error if there was a transaction error
+                                cursor.fetchall()
+                                conn.commit()
+                            except Error as e:
+                                conn.rollback()
+                                return CallToolResult(
+                                    isError=True,
+                                    content=[TextContent(
+                                        type="text",
+                                        text=f"Transaction error: {str(e)}"
+                                    )]
+                                )
+                        
                         # Regular SELECT queries
                         if cleaned_query.strip().upper().startswith("SELECT"):
                             columns = [desc[0] for desc in cursor.description]
@@ -295,6 +311,18 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         
                         # Non-SELECT queries
                         else:
+                            # Check for permission errors (SQL Server error codes)
+                            if cursor.messages:
+                                for message in cursor.messages:
+                                    if any(code in str(message) for code in ['229', '230', '262', '297', '378']):
+                                        return CallToolResult(
+                                            isError=True,
+                                            content=[TextContent(
+                                                type="text",
+                                                text=f"Permission denied: {str(message)}"
+                                            )]
+                                        )
+                            
                             conn.commit()
                             return CallToolResult(
                                 content=[TextContent(
@@ -304,11 +332,24 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                             )
                     except Error as e:
                         # SQL-specific errors
+                        error_msg = str(e)
+                        is_permission_error = any(err in error_msg.lower() for err in 
+                            ["permission", "privilege", "access denied", "not authorized"])
+                        
+                        if is_permission_error:
+                            return CallToolResult(
+                                isError=True,
+                                content=[TextContent(
+                                    type="text",
+                                    text=f"Permission denied: {error_msg}"
+                                )]
+                            )
+                        
                         return CallToolResult(
                             isError=True,
                             content=[TextContent(
                                 type="text",
-                                text=f"Error: {str(e)}"
+                                text=f"Error: {error_msg}"
                             )]
                         )
                     
