@@ -19,7 +19,7 @@ jobs:
         env:
           ACCEPT_EULA: Y
           MSSQL_PID: Developer
-          SA_PASSWORD: testpassword
+          MSSQL_SA_PASSWORD: testpassword
         ports:
           - 1433:1433
         options: >-
