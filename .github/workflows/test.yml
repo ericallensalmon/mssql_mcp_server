@@ -107,7 +107,7 @@ jobs:
         MSSQL_CONNECT_TIMEOUT: 30
         MSSQL_TRUST_SERVER_CERTIFICATE: yes
       run: |
-        python -c 'import os, pyodbc; print("Testing connection..."); conn_str = f"DRIVER={os.environ[\"MSSQL_DRIVER\"]};SERVER={os.environ[\"MSSQL_HOST\"]};DATABASE={os.environ[\"MSSQL_DATABASE\"]};UID={os.environ[\"MSSQL_USER\"]};PWD={os.environ[\"MSSQL_PASSWORD\"]};TrustServerCertificate=yes;"; print(f"Connection string: {conn_str}"); conn = pyodbc.connect(conn_str, timeout=30); cursor = conn.cursor(); cursor.execute("SELECT @@VERSION"); print(cursor.fetchone()[0]); conn.close()'
+        python -c "import os; import pyodbc; print('Testing connection...'); driver=os.environ['MSSQL_DRIVER']; server=os.environ['MSSQL_HOST']; db=os.environ['MSSQL_DATABASE']; uid=os.environ['MSSQL_USER']; pwd=os.environ['MSSQL_PASSWORD']; conn_str=f'DRIVER={driver};SERVER={server};DATABASE={db};UID={uid};PWD={pwd};TrustServerCertificate=yes'; print(f'Connection string: {conn_str}'); conn=pyodbc.connect(conn_str, timeout=30); cursor=conn.cursor(); cursor.execute('SELECT @@VERSION'); print(cursor.fetchone()[0]); conn.close()"
         
         # Run the actual tests
         python -m pytest -v
