@@ -19,15 +19,15 @@ jobs:
         env:
           ACCEPT_EULA: Y
           MSSQL_PID: Express
-          MSSQL_SA_PASSWORD: TestPassword123!
+          MSSQL_SA_PASSWORD: P@ssw0rd2024
         ports:
           - 1433:1433
         options: >-
-          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P TestPassword123! -Q 'SELECT 1'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --health-start-period 20s
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P P@ssw0rd2024 -Q 'SELECT 1'"
+          --health-interval 20s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 60s
 
     strategy:
       matrix:
@@ -92,9 +92,9 @@ jobs:
       run: |
         echo "Waiting for SQL Server to be ready..."
         for i in {1..60}; do
-          if sqlcmd -S tcp:localhost,1433 -U sa -P TestPassword123! -Q "SELECT @@VERSION" > /dev/null 2>&1; then
+          if sqlcmd -S tcp:localhost,1433 -U sa -P P@ssw0rd2024 -Q "SELECT @@VERSION" > /dev/null 2>&1; then
             echo "SQL Server is ready"
-            sqlcmd -S tcp:localhost,1433 -U sa -P TestPassword123! -Q "SELECT @@VERSION"
+            sqlcmd -S tcp:localhost,1433 -U sa -P P@ssw0rd2024 -Q "SELECT @@VERSION"
             break
           fi
           echo "Attempt $i: SQL Server not ready yet..."
@@ -105,7 +105,7 @@ jobs:
       env:
         MSSQL_HOST: localhost
         MSSQL_USER: sa
-        MSSQL_PASSWORD: TestPassword123!
+        MSSQL_PASSWORD: P@ssw0rd2024
         MSSQL_DATABASE: master
         MSSQL_DRIVER: "{ODBC Driver 17 for SQL Server}"
         MSSQL_PORT: 1433
