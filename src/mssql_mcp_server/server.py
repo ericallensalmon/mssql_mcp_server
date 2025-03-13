@@ -284,16 +284,44 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         # For transaction queries, we need to check if there were any errors
                         if "BEGIN TRANSACTION" in cleaned_query.upper():
                             try:
-                                # Try to fetch results - this will raise an error if there was a transaction error
-                                cursor.fetchall()
-                                conn.commit()
+                                # Execute each statement in the transaction separately
+                                statements = [s.strip() for s in cleaned_query.split(';') if s.strip()]
+                                for stmt in statements:
+                                    if stmt.upper().startswith('BEGIN TRANSACTION'):
+                                        continue
+                                    if stmt.upper().startswith('COMMIT'):
+                                        conn.commit()
+                                        continue
+                                    cursor.execute(stmt)
+                                    # Try to fetch results to detect errors
+                                    try:
+                                        cursor.fetchall()
+                                    except:
+                                        pass  # Ignore fetch errors for non-SELECT statements
+                                
+                                # If we got here, all statements succeeded
+                                return CallToolResult(
+                                    content=[TextContent(
+                                        type="text",
+                                        text="Transaction completed successfully"
+                                    )]
+                                )
                             except Error as e:
                                 conn.rollback()
+                                error_msg = str(e)
+                                if "violation of primary key constraint" in error_msg.lower():
+                                    return CallToolResult(
+                                        isError=True,
+                                        content=[TextContent(
+                                            type="text",
+                                            text=f"Error: {error_msg}"
+                                        )]
+                                    )
                                 return CallToolResult(
                                     isError=True,
                                     content=[TextContent(
                                         type="text",
-                                        text=f"Transaction error: {str(e)}"
+                                        text=f"Transaction error: {error_msg}"
                                     )]
                                 )
                         
@@ -311,7 +339,7 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         
                         # Non-SELECT queries
                         else:
-                            # Check for permission errors (SQL Server error codes)
+                            # Check for permission errors before committing
                             if cursor.messages:
                                 for message in cursor.messages:
                                     if any(code in str(message) for code in ['229', '230', '262', '297', '378']):
@@ -322,6 +350,18 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                                 text=f"Permission denied: {str(message)}"
                                             )]
                                         )
+                            
+                            # Check for permission errors in the error message
+                            error_msg = str(cursor.messages[-1] if cursor.messages else "")
+                            if any(err in error_msg.lower() for err in 
+                                ["permission", "privilege", "access denied", "not authorized"]):
+                                return CallToolResult(
+                                    isError=True,
+                                    content=[TextContent(
+                                        type="text",
+                                        text=f"Permission denied: {error_msg}"
+                                    )]
+                                )
                             
                             conn.commit()
                             return CallToolResult(
