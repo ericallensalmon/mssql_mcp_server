@@ -184,6 +184,7 @@ jobs:
         AZURE_SQL_ENCRYPT: yes
         AZURE_SQL_TRUST_SERVER_CERTIFICATE: yes
         AZURE_SQL_CONNECTION_TIMEOUT: 30
+        FORCE_AZURE_TESTS: true
       run: |
         # Run general tests
         python -m pytest -v tests --ignore=tests/test_azure_sql_security.py

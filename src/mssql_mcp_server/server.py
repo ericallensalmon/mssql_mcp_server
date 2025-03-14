@@ -5,16 +5,19 @@ import time
 import platform
 from pyodbc import connect, Error
 from mcp.server import Server
-from mcp.types import Resource, Tool, TextContent, CallToolResult
+from mcp.types import Resource, Tool, TextContent, ImageContent, EmbeddedResource, CallToolResult
 from pydantic import AnyUrl, Field
-from typing import Optional
+from typing import Optional, List, Union, Sequence
 
 
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("mssql_mcp_server")
 
@@ -93,32 +96,53 @@ def retry_on_transient_error(max_attempts=5, initial_delay=1, max_delay=30):
 @retry_on_transient_error()
 def get_db_connection(connection_string):
     """Create a database connection with retry logic."""
-    return connect(connection_string)
+    logger.info("Attempting database connection...")
+    try:
+        conn = connect(connection_string)
+        logger.info("Database connection successful")
+        return conn
+    except Exception as e:
+        logger.error(f"Connection error in get_db_connection: {str(e)}")
+        logger.error(f"Connection error type: {type(e)}")
+        logger.error(f"Connection string (sanitized): {connection_string.replace(connection_string.split('PWD=')[1].split(';')[0], '***')}")
+        raise
 
 def get_db_config():
     """Get database configuration from environment variables."""
+    logger.info("Getting database configuration...")
     config = {
         "driver": os.getenv("MSSQL_DRIVER", get_default_driver()),
         "server": os.getenv("MSSQL_HOST", "localhost"),
         "user": os.getenv("MSSQL_USER"),
-        "password": os.getenv("MSSQL_PASSWORD"),
+        "password": "***",  # Masked for logging
         "database": os.getenv("MSSQL_DATABASE")
     }
     
-    logger.info(f"Using SQL Server driver: {config['driver']}")
+    logger.info(f"Configuration loaded:")
+    logger.info(f"  Driver: {config['driver']}")
+    logger.info(f"  Server: {config['server']}")
+    logger.info(f"  Database: {config['database']}")
+    logger.info(f"  User: {config['user']}")
+    
+    # Get actual password for connection
+    config["password"] = os.getenv("MSSQL_PASSWORD")
     
     if not all([config["user"], config["password"], config["database"]]):
-        logger.error("Missing required database configuration. Please check environment variables:")
-        logger.error("MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE are required")
+        missing = []
+        if not config["user"]: missing.append("MSSQL_USER")
+        if not config["password"]: missing.append("MSSQL_PASSWORD")
+        if not config["database"]: missing.append("MSSQL_DATABASE")
+        logger.error(f"Missing required configuration: {', '.join(missing)}")
         raise ValueError("Missing required database configuration")
     
     # Detect if server is Azure SQL based on domain name
     is_azure = ".database.windows.net" in config["server"].lower()
+    logger.info(f"Azure SQL Server detected: {is_azure}")
     
     # Build connection string based on server type
     if is_azure:
         connection_string = (
-            f"Driver={{{config['driver']}}};"  # Note the extra braces for Linux ODBC
+            f"Driver={{{config['driver']}}};"
             f"Server=tcp:{config['server']},1433;"
             f"Database={config['database']};"
             f"UID={config['user']};"
@@ -132,13 +156,16 @@ def get_db_config():
         )
     else:
         connection_string = (
-            f"Driver={{{config['driver']}}};"  # Note the extra braces for Linux ODBC
+            f"Driver={{{config['driver']}}};"
             f"Server={config['server']};"
             f"Database={config['database']};"
             f"UID={config['user']};"
             f"PWD={config['password']};"
         )
-
+    
+    # Log sanitized connection string
+    logger.info(f"Connection string (sanitized): {connection_string.replace(config['password'], '***')}")
+    
     return config, connection_string
 
 # Initialize server
@@ -227,49 +254,56 @@ async def list_tools() -> list[Tool]:
     ]
 
 @app.call_tool()
-async def call_tool(name: str, arguments: dict) -> CallToolResult:
+async def call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
     """Execute SQL commands."""
     logger.info(f"Calling tool: {name} with arguments: {arguments}")
     
     # Validate tool name
     if name not in ["execute_sql", "list_tables"]:
-        return CallToolResult(
-            isError=True,
-            content=[TextContent(
-                type="text",
-                text=f"Error: Unknown tool: {name}"
-            )]
-        )
+        return [TextContent(
+            type="text",
+            text=f"Unknown tool: {name}"
+        )]
     
     # Validate required parameters before attempting database connection
     if name == "execute_sql" and "query" not in arguments:
-        return CallToolResult(
-            isError=True,
-            content=[TextContent(
-                type="text",
-                text="Error: Query is required"
-            )]
-        )
+        return [TextContent(
+            type="text",
+            text="Error: Query is required"
+        )]
     
     # Get database configuration and attempt connection
     try:
+        logger.info("Getting database configuration for tool execution...")
         config, connection_string = get_db_config()
+        
+        logger.info("Attempting to establish database connection...")
         with get_db_connection(connection_string) as conn:
+            logger.info("Database connection established successfully")
             with conn.cursor() as cursor:
                 if name == "list_tables":
-                    cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';")
-                    tables = cursor.fetchall()
-                    result = [f"Tables_in_{config['database']}"]  # Header
-                    result.extend([table[0] for table in tables])
-                    return CallToolResult(
-                        content=[TextContent(
+                    logger.info("Executing list_tables query...")
+                    try:
+                        cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';")
+                        tables = cursor.fetchall()
+                        logger.info(f"Found {len(tables)} tables")
+                        result = [f"Tables_in_{config['database']}"]
+                        result.extend([table[0] for table in tables])
+                        return [TextContent(
                             type="text",
                             text="\n".join(result)
                         )]
-                    )
+                    except Exception as e:
+                        logger.error(f"Error in list_tables: {str(e)}")
+                        logger.error(f"Error type: {type(e)}")
+                        return [TextContent(
+                            type="text",
+                            text=f"Error listing tables: {str(e)}"
+                        )]
                 
                 elif name == "execute_sql":
-                    query = arguments["query"]  # We already validated it exists
+                    query = arguments["query"]
+                    logger.info(f"Executing SQL query: {query}")
                     
                     # Remove comments and whitespace for command detection
                     cleaned_query = "\n".join(
@@ -297,34 +331,16 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                                         pass  # Ignore fetch errors for non-SELECT statements
                                 
                                 # If we got here, all statements succeeded
-                                return CallToolResult(
-                                    content=[TextContent(
-                                        type="text",
-                                        text="Transaction completed successfully"
-                                    )]
-                                )
+                                return [TextContent(
+                                    type="text",
+                                    text="Transaction completed successfully"
+                                )]
                             except Error as e:
                                 conn.rollback()
-                                error_msg = str(e)
-                                if "violation of primary key constraint" in error_msg.lower():
-                                    return CallToolResult(
-                                        isError=True,
-                                        content=[TextContent(
-                                            type="text",
-                                            text=f"Error: {error_msg}"
-                                        )]
-                                    )
-                                return CallToolResult(
-                                    isError=True,
-                                    content=[TextContent(
-                                        type="text",
-                                        text=f"Transaction error: {error_msg}"
-                                    )]
-                                )
-                        
-                        # Check if this is a DDL operation
-                        is_ddl = any(keyword in cleaned_query.upper() for keyword in 
-                            ["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE", "DENY"])
+                                return [TextContent(
+                                    type="text",
+                                    text=f"Transaction error: {str(e)}"
+                                )]
                         
                         # Execute the query
                         cursor.execute(query)
@@ -334,35 +350,51 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                             for message in cursor.messages:
                                 msg_str = str(message)
                                 if any(code in msg_str for code in ['229', '230', '262', '297', '378']):
-                                    return CallToolResult(
-                                        isError=True,
-                                        content=[TextContent(
-                                            type="text",
-                                            text=f"Permission denied: {msg_str}"
-                                        )]
-                                    )
+                                    return [TextContent(
+                                        type="text",
+                                        text=f"Permission denied: {msg_str}"
+                                    )]
                         
                         # Regular SELECT queries
                         if cleaned_query.strip().upper().startswith("SELECT"):
+                            logger.info("Processing SELECT query results...")
+                            
+                            # Get column info
                             columns = [desc[0] for desc in cursor.description]
+                            logger.info(f"Query columns: {columns}")
+                            
+                            # Fetch rows
                             rows = cursor.fetchall()
-                            result = [",".join(map(str, row)) for row in rows]
-                            return CallToolResult(
-                                content=[TextContent(
-                                    type="text",
-                                    text="\n".join([",".join(columns)] + result)
-                                )]
-                            )
+                            logger.info(f"Raw query results: {rows}")
+                            
+                            # Process rows
+                            result = []
+                            for row in rows:
+                                row_str = ",".join(map(str, row))
+                                logger.info(f"Processing row: {row_str}")
+                                result.append(row_str)
+                            
+                            # Build final text
+                            header = ",".join(columns)
+                            logger.info(f"Header: {header}")
+                            result_text = "\n".join([header] + result)
+                            logger.info(f"Final result text: {result_text}")
+                            
+                            return [TextContent(
+                                type="text",
+                                text=result_text
+                            )]
                         
                         # Non-SELECT queries
                         else:
                             conn.commit()
-                            return CallToolResult(
-                                content=[TextContent(
-                                    type="text",
-                                    text=f"Query executed successfully. Rows affected: {cursor.rowcount}"
-                                )]
-                            )
+                            result_text = f"Query executed successfully. Rows affected: {cursor.rowcount}"
+                            logger.info(f"Query result: {result_text}")
+                            
+                            return [TextContent(
+                                type="text",
+                                text=result_text
+                            )]
                     except Error as e:
                         # SQL-specific errors
                         error_msg = str(e)
@@ -379,31 +411,24 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         )
                         
                         if is_permission_error:
-                            return CallToolResult(
-                                isError=True,
-                                content=[TextContent(
-                                    type="text",
-                                    text=f"Permission denied: {error_msg}"
-                                )]
-                            )
-                        
-                        return CallToolResult(
-                            isError=True,
-                            content=[TextContent(
+                            return [TextContent(
                                 type="text",
-                                text=f"Error: {error_msg}"
+                                text=f"Permission denied: {error_msg}"
                             )]
-                        )
+                        
+                        return [TextContent(
+                            type="text",
+                            text=f"Error: {error_msg}"
+                        )]
                     
     except Exception as e:
-        logger.error(f"Error executing tool '{name}': {e}")
-        return CallToolResult(
-            isError=True,
-            content=[TextContent(
-                type="text",
-                text=f"Error: {str(e)}"
-            )]
-        )
+        logger.error(f"Error executing tool '{name}': {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Error location: {e.__traceback__.tb_frame.f_code.co_filename}:{e.__traceback__.tb_lineno}")
+        return [TextContent(
+            type="text",
+            text=f"Error: {str(e)}"
+        )]
 
 async def main():
     """Main entry point to run the MCP server."""

@@ -28,17 +28,15 @@ async def test_list_tools():
 async def test_call_tool_invalid_name():
     """Test calling a tool with an invalid name."""
     result = await call_tool("invalid_tool", {})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "Unknown tool" in result.content[0].text
+    assert len(result) == 1
+    assert "Unknown tool" in result[0].text
 
 @pytest.mark.asyncio
 async def test_call_tool_missing_query():
     """Test calling execute_sql without a query."""
     result = await call_tool("execute_sql", {})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "Query is required" in result.content[0].text
+    assert len(result) == 1
+    assert "Query is required" in result[0].text
 
 def has_odbc_driver():
     """Check if the ODBC driver is available."""
@@ -65,18 +63,16 @@ integration_marker = pytest.mark.skipif(
 async def test_sql_syntax_error():
     """Test handling of SQL syntax errors with real database."""
     result = await call_tool("execute_sql", {"query": "SELECTT * FROM sys.tables"})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "syntax" in result.content[0].text.lower()
+    assert len(result) == 1
+    assert "syntax" in result[0].text.lower()
 
 @pytest.mark.asyncio
 @integration_marker
 async def test_table_not_found_error():
     """Test handling of missing table errors with real database."""
     result = await call_tool("execute_sql", {"query": "SELECT * FROM nonexistent_table"})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "invalid object name" in result.content[0].text.lower()
+    assert len(result) == 1
+    assert "invalid object name" in result[0].text.lower()
 
 @pytest.mark.asyncio
 @integration_marker
@@ -90,9 +86,8 @@ async def test_column_not_found_error():
     
     # Test invalid column
     result = await call_tool("execute_sql", {"query": "SELECT nonexistent_column FROM test_table"})
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "invalid column name" in result.content[0].text.lower()
+    assert len(result) == 1
+    assert "invalid column name" in result[0].text.lower()
     
     # Cleanup
     await call_tool("execute_sql", {"query": "DROP TABLE test_table"})
@@ -124,9 +119,8 @@ async def test_permission_error():
         
         # Attempt operation that should fail due to permissions
         result = await call_tool("execute_sql", {"query": "CREATE TABLE test_table (id INT)"})
-        assert result.isError is True
-        assert len(result.content) == 1
-        assert any(err in result.content[0].text.lower() for err in ["permission", "privilege", "access"])
+        assert len(result) == 1
+        assert any(err in result[0].text.lower() for err in ["permission", "privilege", "access"])
     finally:
         # Restore original connection info
         if original_user:
@@ -161,13 +155,12 @@ async def test_transaction_rollback():
         COMMIT;
     """})
     
-    assert result.isError is True
-    assert len(result.content) == 1
-    assert "violation of primary key constraint" in result.content[0].text.lower()
+    assert len(result) == 1
+    assert "violation of primary key constraint" in result[0].text.lower()
     
     # Verify rollback worked (table should be empty)
     verify_result = await call_tool("execute_sql", {"query": "SELECT COUNT(*) as count FROM test_rollback"})
-    assert "0" in verify_result.content[0].text
+    assert "0" in verify_result[0].text
     
     # Cleanup
     await call_tool("execute_sql", {"query": "DROP TABLE test_rollback"})
@@ -189,10 +182,9 @@ async def test_list_tables_functionality():
     
     # Test list_tables
     result = await call_tool("list_tables", {})
-    assert not result.isError
-    assert len(result.content) == 1
-    assert "test_table1" in result.content[0].text
-    assert "test_table2" in result.content[0].text
+    assert len(result) == 1
+    assert "test_table1" in result[0].text
+    assert "test_table2" in result[0].text
     
     # Cleanup
     cleanup_queries = [

@@ -100,8 +100,6 @@ First, create the necessary directories and set up the virtual environment:
 
 ```shell
 # Create directories
-mkdir -Force .cursor
-mkdir -Force .cursor/mcp
 mkdir -Force .cursor/mcp/mssql-mcp-server
 
 # Create and activate a virtual environment
@@ -120,7 +118,7 @@ In the `.cursor` directory, create or add this configuration:
 {
     "mcpServers": {
         "mssql": {
-            "command": "absolute/path/to/.cursor/venv/Scripts/python.exe",
+            "command": "absolute/path/to/.cursor/venv/Scripts/pythonw.exe",
             "args": [
                 "absolute/path/to/.cursor/run_server.py"
             ]
@@ -245,9 +243,10 @@ For improvements that could benefit the original project, please consider contri
 For fork-specific features or changes:
 
 1. Create a feature branch: `git checkout -b feature/amazing-feature`
-2. Commit your changes: `git commit -m 'Add amazing feature'`
-3. Push to the branch: `git push origin feature/amazing-feature`
-4. Open a **Pull Request**
+2. Make your changes and ensure tests pass: `python run_tests.py` ([Docker](https://docs.docker.com/get-docker/) required)
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a **Pull Request**
 
 ### Maintainer
 
