@@ -87,6 +87,7 @@ To integrate with **Claude Desktop**, add this configuration to `claude_desktop_
 ```
 
 ### With Cursor AI (requires Agent model with MCP support)
+<p style="color: #FFA500; font-weight: bold;">⚠️ Cursor AI does not automatically ignore .env or other files with sensitive keys. By default, files in .cursorignore are not indexed or transmitted, however you can accidentally include them in chat if they are open or with @. A .cursorban file has been discussed but not implemented as of 3/29/2025.</p>
 
 To integrate with **Cursor**, you'll need to set up a virtual environment and install the MCP server locally:
 

@@ -118,16 +118,14 @@ jobs:
         MSSQL_PASSWORD: P@ssw0rd2024
         MSSQL_DATABASE: master
         MSSQL_DRIVER: "ODBC Driver 17 for SQL Server"
-        MSSQL_PORT: 1433
-        MSSQL_CONNECT_TIMEOUT: 30
-        MSSQL_TRUST_SERVER_CERTIFICATE: yes
+        MSSQL_TRUST_SERVER_CERTIFICATE: true
       run: |
         # Show driver configuration
         echo "Driver configuration:"
         cat /etc/odbcinst.ini
         
         # Test connection
-        python3 -c "import os,pyodbc;d=os.environ;c=pyodbc.connect('Driver={'+d['MSSQL_DRIVER']+'};Server=tcp:'+d['MSSQL_HOST']+','+d['MSSQL_PORT']+';Database='+d['MSSQL_DATABASE']+';UID='+d['MSSQL_USER']+';PWD='+d['MSSQL_PASSWORD']+';TrustServerCertificate=yes;Encrypt=yes',timeout=30);print(c.cursor().execute('SELECT @@VERSION').fetchone()[0]);c.close()"
+        python3 -c "import os,pyodbc;d=os.environ;c=pyodbc.connect('Driver={'+d['MSSQL_DRIVER']+'};Server=tcp:'+d['MSSQL_HOST']+',1433;Database='+d['MSSQL_DATABASE']+';UID='+d['MSSQL_USER']+';PWD='+d['MSSQL_PASSWORD']+';TrustServerCertificate=yes;Encrypt=yes',timeout=30);print(c.cursor().execute('SELECT @@VERSION').fetchone()[0]);c.close()"
         
         # Run the actual tests
         python -m pytest -v
@@ -181,12 +179,7 @@ jobs:
         MSSQL_USER: sa
         MSSQL_PASSWORD: TestPassword123!
         MSSQL_DATABASE: master
-        AZURE_SQL_ENCRYPT: yes
-        AZURE_SQL_TRUST_SERVER_CERTIFICATE: yes
-        AZURE_SQL_CONNECTION_TIMEOUT: 30
-        FORCE_AZURE_TESTS: true
+        MSSQL_TRUST_SERVER_CERTIFICATE: true
       run: |
-        # Run general tests
-        python -m pytest -v tests --ignore=tests/test_azure_sql_security.py
-        # Run Azure SQL specific security tests
-        python -m pytest -v tests/test_azure_sql_security.py -v
+        # Run all tests including security tests
+        python -m pytest -v

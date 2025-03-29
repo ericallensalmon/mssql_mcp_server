@@ -1,8 +1,24 @@
 # **MSSQL Security Configuration**
 
+## **Database-Level Security Settings**
+
+Before using the MCP server, ensure the following database-level security settings are configured by your database administrator:
+
+```sql
+-- Required database-level security settings
+ALTER DATABASE [database_name] SET ARITHABORT ON;
+ALTER DATABASE [database_name] SET ANSI_NULLS ON;
+ALTER DATABASE [database_name] SET QUOTED_IDENTIFIER ON;
+```
+
+These settings ensure:
+- ARITHABORT: Arithmetic operations that could result in errors (like division by zero) will terminate the query
+- ANSI_NULLS: Consistent NULL handling across all connections
+- QUOTED_IDENTIFIER: Proper handling of quoted identifiers and string literals
+
 ## **Creating a Restricted MSSQL User**
 
-It’s crucial to create a dedicated MSSQL user with minimal permissions for the MCP server. **Never use the ****`sa`**** account** or a user with full administrative privileges.
+It's crucial to create a dedicated MSSQL user with minimal permissions for the MCP server. **Never use the ****`sa`**** account** or a user with full administrative privileges.
 
 ### **1. Create a New MSSQL Login and User**
 
@@ -146,7 +162,7 @@ WHERE login_name = 'mcp_user';
 1. **Regular Password Rotation**
 
    - Use strong, randomly generated passwords.
-   - Change the MCP user’s password periodically.
+   - Change the MCP user's password periodically.
    - Update application configurations after password changes.
 
 2. **Review and Adjust Permissions Periodically**

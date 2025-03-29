@@ -10,8 +10,9 @@ import pyodbc
 def get_container_logs(container_name: str) -> str:
     """Get logs from a Docker container."""
     try:
+        # PowerShell-compatible command
         result = subprocess.run(
-            f'docker ps -q --filter "ancestor={container_name}"',
+            f'docker ps -q --filter "name={container_name}"',
             shell=True,
             check=True,
             text=True,
@@ -155,11 +156,11 @@ def run_tests(env_vars: Dict[str, str], test_args: str) -> int:
         return 1
 
 def stop_container(container_name: str) -> None:
-    """Stop a Docker container by its name/ancestor."""
+    """Stop a Docker container by its name."""
     try:
-        # Get container ID using PowerShell syntax
+        # PowerShell-compatible command
         result = subprocess.run(
-            f'docker ps -q --filter "ancestor={container_name}"',
+            f'docker ps -q --filter "name={container_name}"',
             shell=True,
             check=True,
             text=True,
@@ -172,14 +173,14 @@ def stop_container(container_name: str) -> None:
         print(f"Error stopping container {container_name}: {e}")
 
 def cleanup_containers(container_name: str) -> None:
-    """Clean up Docker containers by ancestor name."""
+    """Clean up Docker containers by name."""
     try:
         # First stop any running containers
         stop_container(container_name)
         
-        # PowerShell-compatible command to get container IDs
+        # PowerShell-compatible command
         result = subprocess.run(
-            f'docker ps -a -q --filter "ancestor={container_name}"',
+            f'docker ps -a -q --filter "name={container_name}"',
             shell=True,
             check=True,
             text=True,
@@ -198,7 +199,7 @@ def pause_on_failure(container_name: str) -> None:
     try:
         # Get container ID
         result = subprocess.run(
-            f'docker ps -q --filter "ancestor={container_name}"',
+            f'docker ps -q --filter "name={container_name}"',
             shell=True,
             check=True,
             text=True,
@@ -249,8 +250,15 @@ def main() -> int:
         # Test SQL Server 2019
         try:
             print("\nTesting with SQL Server 2019...")
-            run_command("docker build --target mssql2019 -t mssql2019-test .")
-            run_command('docker run -d -p 1433:1433 --memory 2g --memory-reservation 2g -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=P@ssw0rd2024" -e "MSSQL_PID=Developer" mssql2019-test')
+            run_command('docker run -d'
+                       ' --name mssql2019-test'
+                       ' -e "ACCEPT_EULA=Y"'
+                       ' -e "MSSQL_PID=Developer"'
+                       ' -e "MSSQL_SA_PASSWORD=P@ssw0rd2024"'
+                       ' -p 1433:1433'
+                       ' --memory 2g'
+                       ' --memory-reservation 2g'
+                       ' mcr.microsoft.com/mssql/server:2019-latest')
 
             mssql2019_env = {
                 "MSSQL_HOST": "127.0.0.1",
@@ -258,70 +266,58 @@ def main() -> int:
                 "MSSQL_PASSWORD": "P@ssw0rd2024",
                 "MSSQL_DATABASE": "master",
                 "MSSQL_DRIVER": "ODBC Driver 17 for SQL Server",
-                "MSSQL_PORT": "1433",
-                "MSSQL_CONNECT_TIMEOUT": "30",
                 "MSSQL_TRUST_SERVER_CERTIFICATE": "yes"
             }
 
             if wait_for_sql_server(mssql2019_env["MSSQL_PASSWORD"], "mssql2019-test"):
-                mssql2019_result = run_tests(mssql2019_env, "-v tests --ignore=tests/test_azure_sql_security.py")
+                mssql2019_result = run_tests(mssql2019_env, "tests/test_sql_security.py")
                 if mssql2019_result != 0:
                     print("\nSQL Server 2019 tests failed!")
                     pause_on_failure("mssql2019-test")
+            else:
+                print("\nFailed to start SQL Server 2019!")
+                pause_on_failure("mssql2019-test")
+
         except Exception as e:
             print(f"\nError during SQL Server 2019 tests: {e}")
             pause_on_failure("mssql2019-test")
-        finally:
-            if mssql2019_result == 0:
-                print("\nCleaning up SQL Server 2019 container...")
-                stop_container("mssql2019-test")
-                cleanup_containers("mssql2019-test")
-            else:
-                print("\nSkipping cleanup due to test failure. Container left running for inspection.")
+            raise
 
         # Test Azure SQL Edge
         try:
             print("\nTesting with Azure SQL Edge...")
-            run_command("docker build --target azuresqledge -t azuresqledge-test .")
             run_command('docker run -d'
-                      ' -p 1433:1433'  # Map to default SQL Server port
-                      ' --memory 2g --memory-reservation 2g'
-                      ' -e "ACCEPT_EULA=Y"'
-                      ' -e "MSSQL_SA_PASSWORD=TestPassword123!"'
-                      ' -e "MSSQL_PID=Developer"'
-                      ' -e "MSSQL_TCP_PORT=1433"'  # Use default port internally
-                      ' -e "MSSQL_IP_ADDRESS=0.0.0.0"'
-                      ' --hostname sql1'
-                      ' --name azuresqledge-test'
-                      ' azuresqledge-test')
+                       ' --name azuresqledge-test'
+                       ' -e "ACCEPT_EULA=Y"'
+                       ' -e "MSSQL_SA_PASSWORD=TestPassword123!"'
+                       ' -e "MSSQL_TCP_PORT=1434"'
+                       ' -p 1434:1434'
+                       ' --memory 2g'
+                       ' --memory-reservation 2g'
+                       ' mcr.microsoft.com/azure-sql-edge:latest')
 
             azure_sql_env = {
-                "MSSQL_HOST": "127.0.0.1",  # Use explicit IP
+                "MSSQL_HOST": "127.0.0.1,1434",
                 "MSSQL_USER": "sa",
                 "MSSQL_PASSWORD": "TestPassword123!",
                 "MSSQL_DATABASE": "master",
                 "MSSQL_DRIVER": "ODBC Driver 17 for SQL Server",
-                "MSSQL_PORT": "1433",  # Use default port
-                "MSSQL_CONNECT_TIMEOUT": "30",
                 "MSSQL_TRUST_SERVER_CERTIFICATE": "yes"
             }
 
-            # Wait longer for Azure SQL Edge
-            if wait_for_sql_server(azure_sql_env["MSSQL_PASSWORD"], "azuresqledge-test", port=1433, timeout_seconds=180):
-                azure_sql_result = run_tests(azure_sql_env, "-v tests")
+            if wait_for_sql_server(azure_sql_env["MSSQL_PASSWORD"], "azuresqledge-test", port=1434):
+                azure_sql_result = run_tests(azure_sql_env, "tests/test_sql_security.py")
                 if azure_sql_result != 0:
                     print("\nAzure SQL Edge tests failed!")
                     pause_on_failure("azuresqledge-test")
+            else:
+                print("\nFailed to start Azure SQL Edge!")
+                pause_on_failure("azuresqledge-test")
+
         except Exception as e:
             print(f"\nError during Azure SQL Edge tests: {e}")
             pause_on_failure("azuresqledge-test")
-        finally:
-            if azure_sql_result == 0:
-                print("\nCleaning up Azure SQL Edge container...")
-                stop_container("azuresqledge-test")
-                cleanup_containers("azuresqledge-test")
-            else:
-                print("\nSkipping cleanup due to test failure. Container left running for inspection.")
+            raise
 
     except Exception as e:
         print(f"\nError during test execution: {e}")
@@ -331,6 +327,11 @@ def main() -> int:
         print("\nTest Results:")
         print(f"SQL Server 2019 Tests: {'PASSED' if mssql2019_result == 0 else 'FAILED'}")
         print(f"Azure SQL Edge Tests: {'PASSED' if azure_sql_result == 0 else 'FAILED'}")
+
+        # Clean up containers
+        print("\nCleaning up containers...")
+        cleanup_containers("mssql2019-test")
+        cleanup_containers("azuresqledge-test")
 
     return 1 if mssql2019_result != 0 or azure_sql_result != 0 else 0
 

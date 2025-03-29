@@ -135,33 +135,24 @@ def get_db_config():
         logger.error(f"Missing required configuration: {', '.join(missing)}")
         raise ValueError("Missing required database configuration")
     
-    # Detect if server is Azure SQL based on domain name
-    is_azure = ".database.windows.net" in config["server"].lower()
-    logger.info(f"Azure SQL Server detected: {is_azure}")
+    # Get security configuration from environment
+    trust_server_certificate = os.getenv("MSSQL_TRUST_SERVER_CERTIFICATE", "").lower() != "no"
+    logger.info(f"Trust server certificate: {trust_server_certificate}")
     
-    # Build connection string based on server type
-    if is_azure:
-        connection_string = (
-            f"Driver={{{config['driver']}}};"
-            f"Server=tcp:{config['server']},1433;"
-            f"Database={config['database']};"
-            f"UID={config['user']};"
-            f"PWD={config['password']};"
-            "Encrypt=yes;"
-            "TrustServerCertificate=no;"
-            "Connection Timeout=30;"
-            "ApplicationIntent=ReadWrite;"
-            "MultiSubnetFailover=yes;"
-            "Column Encryption Setting=Enabled;"
-        )
-    else:
-        connection_string = (
-            f"Driver={{{config['driver']}}};"
-            f"Server={config['server']};"
-            f"Database={config['database']};"
-            f"UID={config['user']};"
-            f"PWD={config['password']};"
-        )
+    # Build connection string with secure defaults
+    connection_string = (
+        f"Driver={{{config['driver']}}};"
+        f"Server={config['server']};"
+        f"Database={config['database']};"
+        f"UID={config['user']};"
+        f"PWD={config['password']};"
+        "Encrypt=yes;"
+        f"TrustServerCertificate={'yes' if trust_server_certificate else 'no'};"
+        "Connection Timeout=30;"
+        "ApplicationIntent=ReadWrite;"
+        "MultiSubnetFailover=yes;"
+        "Protocol=TCP;"
+    )
     
     # Log sanitized connection string
     logger.info(f"Connection string (sanitized): {connection_string.replace(config['password'], '***')}")
