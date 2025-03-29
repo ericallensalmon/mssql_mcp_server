@@ -12,13 +12,15 @@ ALTER DATABASE [database_name] SET QUOTED_IDENTIFIER ON;
 ```
 
 These settings ensure:
-- ARITHABORT: Arithmetic operations that could result in errors (like division by zero) will terminate the query
-- ANSI_NULLS: Consistent NULL handling across all connections
-- QUOTED_IDENTIFIER: Proper handling of quoted identifiers and string literals
+- **ARITHABORT**: Arithmetic operations that could result in errors (like division by zero) will terminate the query
+- **ANSI_NULLS**: Consistent `NULL` handling across all connections
+- **QUOTED_IDENTIFIER**: Proper handling of quoted identifiers and string literals
 
 ## **Creating a Restricted MSSQL User**
 
-It's crucial to create a dedicated MSSQL user with minimal permissions for the MCP server. **Never use the ****`sa`**** account** or a user with full administrative privileges.
+It's crucial to create a dedicated MSSQL user with minimal permissions for the MCP server. 
+> [!WARNING]
+> **Never use the ****`sa`**** account** or a user with full administrative privileges.
 
 ### **1. Create a New MSSQL Login and User**
 
