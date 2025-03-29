@@ -19,8 +19,8 @@ This ensures safer database exploration, strict permission enforcement, and logg
 - **Comprehensive Logging** for monitoring queries and operations
 
 ## Installation
-
-If you would like to install a package, please see if the [original](https://github.com/JexinSam/mssql_mcp_server) will work for you first.
+> [!TIP]
+> If you would prefer to install a package, please see if the [original](https://github.com/JexinSam/mssql_mcp_server) will work for you first.
 ```bash
 pip install mssql-mcp-server
 ```
@@ -87,14 +87,16 @@ To integrate with **Claude Desktop**, add this configuration to `claude_desktop_
 ```
 
 ### With Cursor AI (requires Agent model with MCP support)
-<p style="color: #FFA500; font-weight: bold;">⚠️ Cursor AI does not automatically ignore .env or other files with sensitive keys. By default, files in .cursorignore are not indexed or transmitted, however you can accidentally include them in chat if they are open or with @. A .cursorban file has been discussed but not implemented as of 3/29/2025.</p>
+> [!CAUTION]
+> Cursor AI does not automatically ignore .env or other files with sensitive keys. By default, files in .cursorignore are not indexed or transmitted, however you can > accidentally include them in chat if they are open or with @. A .cursorban file has been discussed but not implemented as of 3/29/2025.
 
 To integrate with **Cursor**, you'll need to set up a virtual environment and install the MCP server locally:
 
 > **Prerequisites**: Python 3.11 or higher is required.
 
-> ⚠️ **Important Note About Environment Variables**  
-> While the Claude Desktop configuration above shows environment variables being passed directly in the configuration, this approach doesn't work reliably with Cursor.  
+> [!NOTE]
+> **Important Note About Environment Variables**  
+> While the Claude Desktop configuration above shows environment variables being passed directly in the configuration, this approach doesn't work reliably with Cursor.
 > Instead, we'll use `python-dotenv` to load these from a `.env` file, which provides a more reliable solution.
 
 First, create the necessary directories and set up the virtual environment:
@@ -114,7 +116,7 @@ pip install git+https://github.com/ericallensalmon/mssql_mcp_server.git
 Then create three files:
 
 In the `.cursor` directory, create or add this configuration:
-1. `mcp.json`:
+1. *`mcp.json`*:
 ```json
 {
     "mcpServers": {
@@ -129,7 +131,7 @@ In the `.cursor` directory, create or add this configuration:
 ```
 
 Add these two files in the `.cursor/mcp/mssql-mcp-server` directory:
-1. `run_server.py`:
+1. *`run_server.py`*:
 ```python
 import os
 import sys
@@ -160,7 +162,9 @@ if __name__ == "__main__":
     asyncio.run(main()) 
 ```
 
-2. `.env`:
+2. *`.env`*:
+> [!WARNING]
+> Make sure your *`.cursorignore`* is set to ignore this file **before** creating it.
 ```ini
 MSSQL_DRIVER=ODBC Driver 18 for SQL Server
 MSSQL_HOST=localhost
@@ -231,7 +235,8 @@ For a secure setup:
 
 For detailed instructions, refer to the **[MSSQL Security Configuration Guide](https://github.com/ericallensalmon/mssql_mcp_server/blob/main/SECURITY.md)**.
 
-⚠️ **IMPORTANT:** Always follow the **Principle of Least Privilege** when configuring database access.
+> [!IMPORTANT]
+> Always follow the **Principle of Least Privilege** when configuring database access.
 
 ## License
 
